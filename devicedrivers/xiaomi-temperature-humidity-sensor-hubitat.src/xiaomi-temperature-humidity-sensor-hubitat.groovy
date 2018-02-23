@@ -1,6 +1,7 @@
 /**
- *  Xiaomi Temperature Humidity Sensor Device Driver for Hubitat Elevation hub
- *  Version 0.1b
+ *  Xiaomi "Original" & Aqara Temperature Humidity Sensor
+ *  Device Driver for Hubitat Elevation hub
+ *  Version 0.5
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -17,39 +18,48 @@
  *  Code reworked for use with Hubitat Elevation hub by veeceeoh
  *
  *  Known issues:
- *  Xiaomi devices do not accept configReporting commmands, but instead send reports based on changes, and a status report every 50-60 minutes
- *  Pairing Xiaomi devices can be difficult as they were not designed to use with a Hubitat hub.
+ *  + Xiaomi devices send reports based on changes, and a status report every 50-60 minutes. These settings cannot be adjusted.
+ *  + The battery level / voltage is not reported at pairing. Wait for the first status report, 50-60 minutes after pairing.
+ *  + Pairing Xiaomi devices can be difficult as they were not designed to use with a Hubitat hub.
+ *    Holding the sensor's reset button until the LED blinks will start pairing mode.
+ *    3 quick flashes indicates success, while one long flash means pairing has not started yet.
+ *    In either case, keep the sensor "awake" by short-pressing the reset button repeatedly, until recognized by Hubitat.
+ *  + The connection can be dropped without warning. To reconnect, put Hubitat in "Discover Devices" mode, then short-press
+ *    the sensor's reset button, and wait for the LED - 3 quick flashes indicates reconnection. Otherwise, short-press again.
  *
  */
 
 metadata {
-  definition (name: "Xiaomi Temperature Humidity Sensor", namespace: "veeceeoh", author: "veeceeoh") {
-	capability "Temperature Measurement"
-	capability "Relative Humidity Measurement"
-  capability "Sensor"
-	capability "Battery"
+	definition (name: "Xiaomi Temperature Humidity Sensor", namespace: "veeceeoh", author: "veeceeoh") {
+		capability "Temperature Measurement"
+		capability "Relative Humidity Measurement"
+		capability "Sensor"
+		capability "Battery"
 
-	attribute "lastCheckin", "String"
-	attribute "lastCheckinDate", "String"
-	attribute "batteryRuntime", "String"
+		attribute "lastCheckin", "String"
+		attribute "lastCheckinDate", "String"
+		attribute "batteryLastReplaced", "String"
 
-	fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF", outClusters: "0000,0003,0019, FFFF"
-	fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF", outClusters: "0000,0003,0019, FFFF", manufacturer: "LUMI", model: "lumi.sensor_ht", deviceJoinName: "Xiaomi Temp Sensor"
+		//fingerprint for Xioami "original" Temperature Humidity Sensor
+		fingerprint endpointId: "01", profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_ht"
+		//fingerprint for Xioami Aqara Temperature Humidity Sensor
+		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000, 0003, FFFF, 0402, 0403, 0405", outClusters: "0000, 0004, FFFF", manufacturer: "LUMI", model: "lumi.weather"
 
-	command "resetBatteryRuntime"
-}
+		command "resetBatteryReplaced"
+	}
 
-  preferences {
+	preferences {
 		//Temp and Humidity Offsets
-    input "tempOffset", "decimal", title:"Temperature Offset", description:"Adjust temperature by this many degrees", range:"*..*"
-    input "humidOffset", "number", title:"Humidity Offset", description:"Adjust humidity by this many percent", range: "*..*"
+		input "tempOffset", "decimal", title:"Temperature Offset", description:"", range:"*..*"
+		input "humidOffset", "decimal", title:"Humidity Offset", description:"", range: "*..*"
+		input "pressOffset", "decimal", title:"Pressure Offset (Aqara model only)", description:"", range: "*..*"
+		input name:"PressureUnits", type:"enum", title:"Pressure Units (Aqara model only)", description:"", options:["mbar", "kPa", "inHg", "mmHg"]
 		//Date & Time Config
-    input name: "dateformat", type: "enum", title: "Set Date Format for lastCheckin US (MDY) - UK (DMY) - Other (YMD)", description: "Date Format", options:["US","UK","Other"]
-    input name: "clockformat", type: "bool", title: "Use 24 hour clock?"
+		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
+		input name: "clockformat", type: "bool", title: "Use 24 hour clock?", description: ""
 		//Battery Reset Config
 		input name: "battReset", type: "bool", title: "Click this toggle and press save when battery has been replaced", description: ""
 		//Battery Voltage Offset
-		input description: "Only change the settings below if you know what you're doing.", type: "paragraph", element: "paragraph", title: "ADVANCED SETTINGS"
 		input name: "voltsmax", title: "Max Volts (A battery is at 100% at ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
 		input name: "voltsmin", title: "Min Volts (A battery needs replacing at ___ volts, Range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
 	}
@@ -57,38 +67,39 @@ metadata {
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-  // log.debug "${device.displayName}: Parsing description: ${description}"
-  def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
-  def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
-  def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
+	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
+	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
+	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
+	//log.debug "${device.displayName}: Parsing description: ${description}"
 
 	// Determine current time and date in the user-selected date format and clock style
-  def now = formatDate()
-  def nowDate = new Date(now).getTime()
+	def now = formatDate()
+	def nowDate = new Date(now).getTime()
 
 	// Any report - temp, humidity, pressure, & battery - results in a lastCheckin event and update to Last Checkin tile
 	// However, only a non-parseable report results in lastCheckin being displayed in events log
-  sendEvent(name: "lastCheckin", value: now, displayed: false)
-  sendEvent(name: "lastCheckinDate", value: nowDate, displayed: false)
+	sendEvent(name: "lastCheckin", value: now, displayed: false)
+	sendEvent(name: "lastCheckinDate", value: nowDate, displayed: false)
 
-  Map map = [:]
+	Map map = [:]
 
 	// Send message data to appropriate parsing function based on the type of report
 	if (cluster == "0402") {
-    map = parseTemperature(valueHex)
-  } else if (cluster == "0405") {
-    map = parseHumidity(valueHex)
-  } else if (cluster == "0000" & attrId == "0005") {
-    log.debug "${device.displayName}: Reset button was short-pressed"
-	} else if (description?.startsWith('catchall:')) {
-		map = parseCatchAllMessage(valueHex)
+		map = parseTemperature(valueHex)
+	} else if (cluster == "0405") {
+		map = parseHumidity(valueHex)
+	} else if (cluster == "0403") {
+		map = parsePressure(valueHex)
+	} else if (cluster == "0000" & attrId == "0005") {
+		log.debug "${device.displayName}: Reset button was short-pressed"
+	} else if  (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
+		map = parseBattery(valueHex)
 	} else {
 		log.debug "${device.displayName}: was unable to parse ${description}"
-    sendEvent(name: "lastCheckin", value: now)
 	}
 
 	if (map) {
-		log.debug "${device.displayName}: Parse returned ${map}"
+		log.debug "${map.descriptionText}"
 		return createEvent(map)
 	} else
 		return [:]
@@ -96,158 +107,154 @@ def parse(String description) {
 
 // Calculate temperature with 0.1 precision in C or F unit as set by hub location settings
 private parseTemperature(description) {
-  float temp = Integer.parseInt(description,16)/100
-  log.debug "${device.displayName}: Raw reported temperature = ${temp}°C"
+	float temp = Integer.parseInt(description,16)/100
+	//log.debug "${device.displayName}: Raw reported temperature = ${temp}°C"
 	def offset = tempOffset ? tempOffset : 0
 	temp = (temp > 100) ? (temp - 655.35) : temp
-  temp = (temperatureScale == "F") ? ((temp * 1.8) + 32) + offset : temp + offset
-  temp = temp.round(1)
-  return [
-    name: 'temperature',
-    value: temp,
-    unit: "${temperatureScale}",
-    isStateChange: true,
-    descriptionText: "${device.displayName} temperature is ${temp}°${temperatureScale}",
-    translatable:true
-  ]
+	temp = (temperatureScale == "F") ? ((temp * 1.8) + 32) + offset : temp + offset
+	temp = temp.round(1)
+	return [
+		name: 'temperature',
+		value: temp,
+		unit: "${temperatureScale}",
+		isStateChange: true,
+		descriptionText: "${device.displayName}: Temperature is ${temp}°${temperatureScale}",
+		translatable:true
+	]
 }
 
 // Calculate humidity with 0.1 precision
 private parseHumidity(description) {
-  float humidity = Integer.parseInt(description,16)/100
-  //log.debug "${device.displayName}: Raw reported humidity = ${humidity}%"
+	float humidity = Integer.parseInt(description,16)/100
+	//log.debug "${device.displayName}: Raw reported humidity = ${humidity}%"
 	humidity = humidityOffset ? (humidity + humidityOffset) : humidity
-  humidity = humidity.round(1)
-  return [
-    name: 'humidity',
-    value: humidity,
-    unit: "%",
-    isStateChange: true,
-    descriptionText: "${device.displayName} humidity is ${humidity}%",
-  ]
+	humidity = humidity.round(1)
+	return [
+		name: 'humidity',
+		value: humidity,
+		unit: "%",
+		isStateChange: true,
+		descriptionText: "${device.displayName}: Humidity is ${humidity}%",
+	]
 }
 
-// Check catchall for battery voltage data to pass to getBatteryResult for conversion to percentage report
-private Map parseCatchAllMessage(String description) {
-	Map resultMap = [:]
-	def catchall = zigbee.parse(description)
-	log.debug catchall
-
-	if (catchall.clusterId == 0x0000) {
-		def MsgLength = catchall.data.size()
-		// Xiaomi CatchAll does not have identifiers, first UINT16 is Battery
-		if ((catchall.data.get(0) == 0x01 || catchall.data.get(0) == 0x02) && (catchall.data.get(1) == 0xFF)) {
-			for (int i = 4; i < (MsgLength-3); i++) {
-				if (catchall.data.get(i) == 0x21) { // check the data ID and data type
-					// next two bytes are the battery voltage
-					resultMap = getBatteryResult((catchall.data.get(i+2)<<8) + catchall.data.get(i+1))
-					break
-				}
-			}
-		}
+// Parse pressure report
+private parsePressure(description) {
+	float pressureval = Integer.parseInt(description[0..3], 16)
+	if (!(PressureUnits)) {
+		PressureUnits = "mbar"
 	}
-	return resultMap
+	// log.debug "${device.displayName}: Converting ${pressureval} to ${PressureUnits}"
+	switch (PressureUnits) {
+		case "mbar":
+			pressureval = (pressureval/10) as Float
+			pressureval = pressureval.round(1);
+			break;
+		case "kPa":
+			pressureval = (pressureval/100) as Float
+			pressureval = pressureval.round(2);
+			break;
+		case "inHg":
+			pressureval = (((pressureval/10) as Float) * 0.0295300)
+			pressureval = pressureval.round(2);
+			break;
+		case "mmHg":
+			pressureval = (((pressureval/10) as Float) * 0.750062)
+			pressureval = pressureval.round(2);
+			break;
+	}
+	// log.debug "${device.displayName}: Pressure is ${pressureval} ${PressureUnits} before applying the pressure offset."
+	pressureval = pressOffset ? (pressureval + pressOffset) : pressureval
+	pressureval = pressureval.round(2);
+
+	return [
+		name: 'pressure',
+		value: pressureval,
+		unit: PressureUnits,
+		isStateChange: true,
+		descriptionText: "${device.displayName}: Pressure is ${pressureval} ${PressureUnits}"
+	]
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
-private Map getBatteryResult(rawValue) {
-    // raw voltage is normally supplied as a 4 digit integer that needs to be divided by 1000
-    // but in the case the final zero is dropped then divide by 100 to get actual voltage value
+private parseBattery(description) {
+    //log.debug "${device.displayName}: Battery bytes = ${(description[8..9] + description[6..7])}"
+    def rawValue = Integer.parseInt((description[8..9] + description[6..7]),16)
+    //log.debug "${device.displayName}: Raw battery integer = ${rawValue}"
     def rawVolts = rawValue / 1000
-    def minVolts
-    def maxVolts
-
-    if(voltsmin == null || voltsmin == "")
-    	minVolts = 2.5
-    else
-   	minVolts = voltsmin
-
-    if(voltsmax == null || voltsmax == "")
-    	maxVolts = 3.0
-    else
-	maxVolts = voltsmax
-
+    def minVolts = voltsmin ? voltsmin : 2.5
+    def maxVolts = voltsmax ? voltsmax : 3.0
     def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
     def roundedPct = Math.min(100, Math.round(pct * 100))
-
     def result = [
         name: 'battery',
         value: roundedPct,
         unit: "%",
-        isStateChange:true,
-        descriptionText : "${device.displayName} raw battery is ${rawVolts}v"
+        isStateChange: true,
+        descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
     ]
-
     return result
 }
 
-//Reset the date displayed in Battery Changed tile to current date
-def resetBatteryRuntime(paired) {
+//Reset the batteryLastReplaced date to current date
+def resetBatteryReplaced(paired) {
 	def now = formatDate(true)
 	def newlyPaired = paired ? " for newly paired sensor" : ""
-	sendEvent(name: "batteryRuntime", value: now)
-	log.debug "${device.displayName}: Setting Battery Changed to current date${newlyPaired}"
+	sendEvent(name: "batteryLastReplaced", value: now)
+	log.debug "${device.displayName}: Setting Battery Last Replaced to current date${newlyPaired}"
 }
 
-// installed() runs just after a sensor is paired using the "Add a Thing" method in the SmartThings mobile app
+// installed() runs just after a sensor is paired
 def installed() {
-	if (!batteryRuntime) resetBatteryRuntime(true)
-	checkIntervalEvent("installed")
+	if (!batteryLastReplaced) resetBatteryReplaced(true)
 }
 
 // configure() runs after installed() when a sensor is paired
 def configure() {
-	log.debug "${device.displayName}: configuring"
-	if (!batteryRuntime) resetBatteryRuntime(true)
-	checkIntervalEvent("configured")
+	log.debug "${device.displayName}: Configuring"
+	if (!batteryLastReplaced) resetBatteryReplaced(true)
 	return
 }
 
-// updated() will run twice every time user presses save in preference settings page
+// updated() will run twice every time user saves preferences
 def updated() {
-		checkIntervalEvent("updated")
-		if(battReset){
-		resetBatteryRuntime()
-		device.updateSetting("battReset", false)
-	}
-}
-
-private checkIntervalEvent(text) {
-    // Device wakes up every 1 hours, this interval allows us to miss one wakeup notification before marking offline
-    log.debug "${device.displayName}: Configured health checkInterval when ${text}()"
-    sendEvent(name: "checkInterval", value: 2 * 60 * 60 + 2 * 60, displayed: false, data: [protocol: "zigbee", hubHardwareId: device.hub.hardwareID])
+    log.debug "${device.displayName}: Updating preference settings"
+        if(battReset){
+        resetBatteryReplaced()
+        device.updateSetting("battReset", false)
+    }
 }
 
 def formatDate(batteryReset) {
-    def correctedTimezone = ""
-    def timeString = clockformat ? "HH:mm:ss" : "h:mm:ss aa"
+	def correctedTimezone = ""
+	def timeString = clockformat ? "HH:mm:ss" : "h:mm:ss aa"
 
 	// If user's hub timezone is not set, display error messages in log and events log, and set timezone to GMT to avoid errors
-    if (!(location.timeZone)) {
-        correctedTimezone = TimeZone.getTimeZone("GMT")
-        log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your location in the SmartThings mobile app."
-        sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your location in the SmartThings mobile app.")
-    }
-    else {
-        correctedTimezone = location.timeZone
-    }
+	if (!(location.timeZone)) {
+		correctedTimezone = TimeZone.getTimeZone("GMT")
+		log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your location in the SmartThings mobile app."
+		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your location in the SmartThings mobile app.")
+	}
+	else {
+		correctedTimezone = location.timeZone
+	}
 
-    if (dateformat == "US" || dateformat == "" || dateformat == null) {
-        if (batteryReset)
-            return new Date().format("MMM dd yyyy", correctedTimezone)
-        else
-            return new Date().format("EEE MMM dd yyyy ${timeString}", correctedTimezone)
-    }
-    else if (dateformat == "UK") {
-        if (batteryReset)
-            return new Date().format("dd MMM yyyy", correctedTimezone)
-        else
-            return new Date().format("EEE dd MMM yyyy ${timeString}", correctedTimezone)
-        }
-    else {
-        if (batteryReset)
-            return new Date().format("yyyy MMM dd", correctedTimezone)
-        else
-            return new Date().format("EEE yyyy MMM dd ${timeString}", correctedTimezone)
-    }
+	if (dateformat == "US" || dateformat == "" || dateformat == null) {
+		if (batteryReset)
+			return new Date().format("MMM dd yyyy", correctedTimezone)
+		else
+			return new Date().format("EEE MMM dd yyyy ${timeString}", correctedTimezone)
+	}
+	else if (dateformat == "UK") {
+		if (batteryReset)
+			return new Date().format("dd MMM yyyy", correctedTimezone)
+		else
+			return new Date().format("EEE dd MMM yyyy ${timeString}", correctedTimezone)
+	}
+	else {
+		if (batteryReset)
+			return new Date().format("yyyy MMM dd", correctedTimezone)
+		else
+			return new Date().format("EEE yyyy MMM dd ${timeString}", correctedTimezone)
+	}
 }
