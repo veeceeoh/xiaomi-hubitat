@@ -1,6 +1,6 @@
 # Xiaomi Original & Aqara Device Drivers for Hubitat
 
-Maintained by veeceeoh, cloned from bspranger/Xiaomi, a fork of a4refillpad's Xiaomi SmartThings device handler repository. 
+Maintained by veeceeoh, adapted from bspranger/Xiaomi, a fork of a4refillpad's Xiaomi SmartThings device handler repository. 
 Contributions by alecm, bspranger, foz333, gn0st1c, ronvandegraaf, tmleafs, & veeceeoh
 
 ---
