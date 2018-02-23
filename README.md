@@ -1,23 +1,22 @@
-# Xiaomi Original & Aqara Device Handlers for SmartThings
+# Xiaomi Original & Aqara Device Drivers for Hubitat
 
-Maintained by bspranger
-Forked from a4refillpad's Xiaomi repository. Contributions from veeceeoh, ronvandegraaf, tmleafs & gn0st1c.
-
-Install manually or using GitHub integration with these settings:
-```
-Owner: bspranger
-Name: Xiaomi
-Branch: master
-```
+Maintained by veeceeoh, cloned from bspranger/Xiaomi, a fork of a4refillpad's Xiaomi SmartThings device handler repository. 
+Contributions by bspranger, foz333, gn0st1c, ronvandegraaf, tmleafs, & veeceeoh
 
 ---
 
 ## Pairing
 
-These devices are not easy to pair initially. More information and help is available at <a href="https://community.smartthings.com/t/original-aqara-xiaomi-zigbee-sensors-contact-temp-motion-button-outlet-leak-etc/113253/1">this SmartThings Community Post</a>.
+These devices are not easy to pair initially. More information and help is available at <a href="https://community.hubitat.com/t/xiaomi-devices-are-they-pairing-staying-connected-for-you/623">this Hubitat Community Thread</a>.
 
 
-## Supported Xiaomi Devices
+## Currently Supported Xiaomi Devices
+
+|||
+|---|---|
+
+
+## Device Drivers In Progress
 
 |||
 |---|---|
@@ -31,7 +30,3 @@ These devices are not easy to pair initially. More information and help is avail
 |**Xiaomi Temperature Humidity Sensor**|**Xiaomi Aqara Temperature Humidity Sensor**|
 |![Xiaomi mijia Honeywell Fire Alarm Detector](images/smoke.jpg)|![Xiaomi Aqara Leak Sensor](images/aqarawater.jpg)|
 |**Xiaomi mijia Honeywell Fire Alarm Detector**|**Xiaomi Aqara Leak Sensor**|
-|![Xiaomi Zigbee Outlet](images/outlet.jpg)||
-|**Xiaomi Zigbee Outlet**||
-
-**We do not recommend the Xiaomi Zigbee outlet as they may make SmartThings less stable.**
