@@ -14,7 +14,8 @@ These devices are not easy to pair initially. More information and help is avail
 
 |||
 |---|---|
-
+|![Xiaomi Temperature Humidity Sensor](images/temp.jpg)|![Xiaomi Aqara Temperature Humidity Sensor](images/aqaratemp.jpg)|
+|**Xiaomi Temperature Humidity Sensor**|**Xiaomi Aqara Temperature Humidity Sensor**|
 
 ## Device Drivers In Progress
 
@@ -26,7 +27,5 @@ These devices are not easy to pair initially. More information and help is avail
 |**Xiaomi Door/Window Sensor**|**Xiaomi Aqara Door/Window Sensor**|
 |![Xiaomi Motion Sensor](images/motion.jpg)|![Xiaomi Aqara Motion Sensor](images/aqaramotion.jpg)|
 |**Xiaomi Motion Sensor**|**Xiaomi Aqara Motion Sensor**|
-|![Xiaomi Temperature Humidity Sensor](images/temp.jpg)|![Xiaomi Aqara Temperature Humidity Sensor](images/aqaratemp.jpg)|
-|**Xiaomi Temperature Humidity Sensor**|**Xiaomi Aqara Temperature Humidity Sensor**|
 |![Xiaomi mijia Honeywell Fire Alarm Detector](images/smoke.jpg)|![Xiaomi Aqara Leak Sensor](images/aqarawater.jpg)|
 |**Xiaomi mijia Honeywell Fire Alarm Detector**|**Xiaomi Aqara Leak Sensor**|
