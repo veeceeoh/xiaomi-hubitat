@@ -78,6 +78,8 @@ def parse(String description) {
     map = parseTemperature(valueHex)
   } else if (cluster == "0405") {
     map = parseHumidity(valueHex)
+  } else if (cluster == "0000" & attrId == "0005") {
+    log.debug "${device.displayName}: Reset button was short-pressed"
 	} else if (description?.startsWith('catchall:')) {
 		map = parseCatchAllMessage(valueHex)
 	} else {
