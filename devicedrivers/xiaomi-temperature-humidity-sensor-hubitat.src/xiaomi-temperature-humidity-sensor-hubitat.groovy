@@ -97,9 +97,9 @@ def parse(String description) {
 // Calculate temperature with 0.1 precision in C or F unit as set by hub location settings
 private parseTemperature(description) {
   float temp = Integer.parseInt(description,16)/100
-  //log.debug "${device.displayName}: Raw reported temperature = ${temp}°C"
+  log.debug "${device.displayName}: Raw reported temperature = ${temp}°C"
 	def offset = tempOffset ? tempOffset : 0
-	temp = (temp > 100) ? (100 - temp) : temp
+	temp = (temp > 100) ? (temp - 655.35) : temp
   temp = (temperatureScale == "F") ? ((temp * 1.8) + 32) + offset : temp + offset
   temp = temp.round(1)
   return [
