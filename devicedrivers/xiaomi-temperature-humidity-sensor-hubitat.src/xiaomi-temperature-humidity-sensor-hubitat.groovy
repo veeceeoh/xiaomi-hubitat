@@ -105,6 +105,8 @@ private parseTemperature(description) {
   return [
     name: 'temperature',
     value: temp,
+    unit: "${temperatureScale}",
+    isStateChange: true,
     descriptionText: "${device.displayName} temperature is ${temp}°${temperatureScale}",
     translatable:true
   ]
@@ -114,13 +116,14 @@ private parseTemperature(description) {
 private parseHumidity(description) {
   float humidity = Integer.parseInt(description,16)/100
   //log.debug "${device.displayName}: Raw reported humidity = ${humidity}%"
-	def offset = humidityOffset ? humidityOffset : 0
+	humidity = humidityOffset ? (humidity + humidityOffset) : humidity
   humidity = humidity.round(1)
   return [
     name: 'humidity',
     value: humidity,
+    unit: "%",
+    isStateChange: true,
     descriptionText: "${device.displayName} humidity is ${humidity}%",
-    translatable: true
   ]
 }
 
