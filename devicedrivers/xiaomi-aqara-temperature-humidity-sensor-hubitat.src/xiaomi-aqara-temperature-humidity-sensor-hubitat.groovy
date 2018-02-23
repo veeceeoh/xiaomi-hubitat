@@ -58,7 +58,7 @@ metadata {
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-  // log.debug "${device.displayName}: Parsing description: ${description}"
+  log.debug "${device.displayName}: Parsing description: ${description}"
   def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
   def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
   def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
@@ -132,9 +132,9 @@ private parseHumidity(description) {
 
 // Parse pressure report
 private Map parsePressure(description) {
-		float pressureval = Integer.parseInt(description, 16)
-		if (!(settings.PressureUnits)){
-			settings.PressureUnits = "mbar"
+		float pressureval = Integer.parseInt(description[0..3], 16)
+		if (!(PressureUnits)) {
+			PressureUnits = "mbar"
 		}
 		// log.debug "${device.displayName}: Converting ${pressureval} to ${PressureUnits}"
 		switch (PressureUnits) {
@@ -165,7 +165,7 @@ private Map parsePressure(description) {
 		return [
 			name: 'pressure',
 			value: pressureval,
-			unit: "${PressureUnits}",
+			unit: PressureUnits,
 			isStateChange: true,
 			descriptionText : "${device.displayName} Pressure is ${pressureval} ${PressureUnits}"
 		]
