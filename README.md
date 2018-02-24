@@ -14,10 +14,10 @@ These devices are not easy to pair initially. More information and help is avail
 
 |||
 |---|---|
-|![Xiaomi Motion Sensor](images/motion.jpg)|![Xiaomi Aqara Motion Sensor](images/aqaramotion.jpg)|
-|**Xiaomi Motion Sensor**|**Xiaomi Aqara Motion Sensor**|
 |![Xiaomi Temperature Humidity Sensor](images/temp.jpg)|![Xiaomi Aqara Temperature Humidity Sensor](images/aqaratemp.jpg)|
 |**Xiaomi Temperature Humidity Sensor**|**Xiaomi Aqara Temperature Humidity Sensor**|
+|![Xiaomi Motion Sensor](images/motion.jpg)|![Xiaomi Aqara Motion Sensor](images/aqaramotion.jpg)|
+|**Xiaomi Motion Sensor**|**Xiaomi Aqara Motion Sensor**|
 
 ## Device Drivers In Progress
 
