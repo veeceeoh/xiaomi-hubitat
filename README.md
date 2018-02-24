@@ -1,13 +1,13 @@
 # Xiaomi Original & Aqara Device Drivers for Hubitat
 
 Maintained by veeceeoh, adapted from bspranger/Xiaomi, a fork of a4refillpad's Xiaomi SmartThings device handler repository. 
-Contributions by alecm, bspranger, foz333, gn0st1c, ronvandegraaf, tmleafs, & veeceeoh
+Contributions to previous code by alecm, bspranger, foz333, gn0st1c, ronvandegraaf, tmleafs, & veeceeoh
 
 ---
 
 ## Pairing
 
-These devices are not easy to pair initially. More information and help is available at <a href="https://community.hubitat.com/t/xiaomi-devices-are-they-pairing-staying-connected-for-you/623">this Hubitat Community Thread</a>.
+These devices are not easy to pair initially. More information and help is available at <a href="https://community.hubitat.com/t/release-xiaomi-device-drivers/631">this Hubitat Community Forum Thread</a>.
 
 
 ## Currently Supported Xiaomi Devices
