@@ -1,5 +1,5 @@
 /**
- *  Xiaomi "Original" & Aqara Motion Sensor
+ *  Xiaomi "Original" Motion Sensor
  *  Device Driver for Hubitat Elevation hub
  *  Version 0.5
  *
@@ -30,7 +30,7 @@
  */
 
 metadata {
-	definition (name: "Xiaomi Motion Sensor", namespace: "veeceeoh", author: "veeceeoh") {
+	definition (name: "Xiaomi Original Motion Sensor", namespace: "veeceeoh", author: "veeceeoh") {
 		capability "Motion Sensor"
 		capability "Sensor"
 		capability "Battery"
@@ -43,8 +43,6 @@ metadata {
 
 		//fingerprint for Xioami "original" Motion Sensor
 		fingerprint profileId: "0104", deviceId: "0104", inClusters: "0000, 0003, FFFF, 0019", outClusters: "0000, 0004, 0003, 0006, 0008, 0005, 0019", manufacturer: "LUMI", model: "lumi.sensor_motion", deviceJoinName: "Xiaomi Motion"
-		//fingerprint for Xioami Aqara Motion Sensor
-		fingerprint endpointId: "01", profileId: "0104", deviceId: "0107", inClusters: "0000,FFFF,0406,0400,0500,0001,0003", outClusters: "0000,0019", manufacturer: "LUMI", model: "lumi.sensor_motion.aq2", deviceJoinName: "Xiaomi Aqara Motion Sensor"
 
 		command "resetBatteryReplacedDate"
     command "resetToMotionInactive"
@@ -85,8 +83,6 @@ def parse(String description) {
 		map = parseMotion()
 		sendEvent(name: "lastMotion", value: now)
 		sendEvent(name: "lastMotionDate", value: nowDate)
-	} else if (cluster == "0400") {
-		map = parseIlluminance(valueHex)
 	} else if (cluster == "0000" & attrId == "0005") {
 		log.debug "${device.displayName}: Reset button was short-pressed"
 	} else if  (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
@@ -112,17 +108,6 @@ private parseMotion() {
 		value: 'active',
 		isStateChange: true,
 		descriptionText: "${device.displayName}: Detected motion",
-	]
-}
-
-private parseIlluminance(description) {
-	lux = Integer.parseInt(description,16)
-	return [
-		name: 'illuminance',
-		value: lux,
-		unit: 'lux',
-		isStateChange: true,
-		descriptionText: "${device.displayName}: Illuminance is ${lux} lux"
 	]
 }
 
@@ -202,8 +187,8 @@ def formatDate(batteryReset) {
 	// If user's hub timezone is not set, display error messages in log and events log, and set timezone to GMT to avoid errors
 	if (!(location.timeZone)) {
 		correctedTimezone = TimeZone.getTimeZone("GMT")
-		log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your location in the SmartThings mobile app."
-		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your location in the SmartThings mobile app.")
+		log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your Hubitat hub location."
+		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your Hubitat hub location.")
 	}
 	else {
 		correctedTimezone = location.timeZone
