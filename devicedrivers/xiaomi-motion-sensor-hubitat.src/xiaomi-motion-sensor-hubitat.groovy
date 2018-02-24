@@ -1,7 +1,7 @@
 /**
- *  Xiaomi "Original" & Aqara Temperature Humidity Sensor
+ *  Xiaomi "Original" & Aqara Motion Sensor
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.5.1
+ *  Version 0.5
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -30,34 +30,33 @@
  */
 
 metadata {
-	definition (name: "Xiaomi Temperature Humidity Sensor", namespace: "veeceeoh", author: "veeceeoh") {
-		capability "Temperature Measurement"
-		capability "Relative Humidity Measurement"
+	definition (name: "Xiaomi Motion Sensor", namespace: "veeceeoh", author: "veeceeoh") {
+		capability "Motion Sensor"
 		capability "Sensor"
 		capability "Battery"
 
 		attribute "lastCheckin", "String"
 		attribute "lastCheckinDate", "String"
+    attribute "lastMotion", "String"
+    attribute "lastMotionDate", "String"
 		attribute "batteryLastReplaced", "String"
 
-		//fingerprint for Xioami "original" Temperature Humidity Sensor
-		fingerprint endpointId: "01", profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_ht"
-		//fingerprint for Xioami Aqara Temperature Humidity Sensor
-		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000, 0003, FFFF, 0402, 0403, 0405", outClusters: "0000, 0004, FFFF", manufacturer: "LUMI", model: "lumi.weather"
+		//fingerprint for Xioami "original" Motion Sensor
+		fingerprint profileId: "0104", deviceId: "0104", inClusters: "0000, 0003, FFFF, 0019", outClusters: "0000, 0004, 0003, 0006, 0008, 0005, 0019", manufacturer: "LUMI", model: "lumi.sensor_motion", deviceJoinName: "Xiaomi Motion"
+		//fingerprint for Xioami Aqara Motion Sensor
+		fingerprint endpointId: "01", profileId: "0104", deviceId: "0107", inClusters: "0000,FFFF,0406,0400,0500,0001,0003", outClusters: "0000,0019", manufacturer: "LUMI", model: "lumi.sensor_motion.aq2", deviceJoinName: "Xiaomi Aqara Motion Sensor"
 
 		command "resetBatteryReplacedDate"
+    command "resetToMotionInactive"
 	}
 
 	preferences {
-		//Temp and Humidity Offsets
-		input "tempOffset", "decimal", title:"Temperature Offset", description:"", range:"*..*"
-		input "humidOffset", "decimal", title:"Humidity Offset", description:"", range: "*..*"
-		input "pressOffset", "decimal", title:"Pressure Offset (Aqara model only)", description:"", range: "*..*"
-		input name:"PressureUnits", type:"enum", title:"Pressure Units (Aqara model only)", description:"", options:["mbar", "kPa", "inHg", "mmHg"]
+		//Reset to No Motion Config
+		input "motionreset", "number", title: "After motion is detected, wait __ second(s) until resetting to inactive state (default is 60, same as hardware reset).", description: "", range: "1..7200"
 		//Date & Time Config
 		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
 		input name: "clockformat", type: "bool", title: "Use 24 hour clock?", description: ""
-		//Battery Voltage Offset
+		//Battery Reset Config
     input name: "voltsmin", title: "Min Volts (A battery needs replacing at ___ volts, Range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
 		input name: "voltsmax", title: "Max Volts (A battery is at 100% at ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
 	}
@@ -76,18 +75,18 @@ def parse(String description) {
 
 	// Any report - temp, humidity, pressure, & battery - results in a lastCheckin event and update to Last Checkin tile
 	// However, only a non-parseable report results in lastCheckin being displayed in events log
-	sendEvent(name: "lastCheckin", value: now, displayed: false)
-	sendEvent(name: "lastCheckinDate", value: nowDate, displayed: false)
+	sendEvent(name: "lastCheckin", value: now)
+	sendEvent(name: "lastCheckinDate", value: nowDate)
 
 	Map map = [:]
 
 	// Send message data to appropriate parsing function based on the type of report
-	if (cluster == "0402") {
-		map = parseTemperature(valueHex)
-	} else if (cluster == "0405") {
-		map = parseHumidity(valueHex)
-	} else if (cluster == "0403") {
-		map = parsePressure(valueHex)
+	if (cluster == "0406") {
+		map = parseMotion()
+		sendEvent(name: "lastMotion", value: now)
+		sendEvent(name: "lastMotionDate", value: nowDate)
+	} else if (cluster == "0400") {
+		map = parseIlluminance(valueHex)
 	} else if (cluster == "0000" & attrId == "0005") {
 		log.debug "${device.displayName}: Reset button was short-pressed"
 	} else if  (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
@@ -103,95 +102,68 @@ def parse(String description) {
 		return [:]
 }
 
-// Calculate temperature with 0.1 precision in C or F unit as set by hub location settings
-private parseTemperature(description) {
-	float temp = Integer.parseInt(description,16)/100
-	//log.debug "${device.displayName}: Raw reported temperature = ${temp}°C"
-	def offset = tempOffset ? tempOffset : 0
-	temp = (temp > 100) ? (temp - 655.35) : temp
-	temp = (temperatureScale == "F") ? ((temp * 1.8) + 32) + offset : temp + offset
-	temp = temp.round(1)
+// Parse motion active report
+private parseMotion() {
+	def seconds = motionreset ? motionreset : 60
+	// The sensor only sends a motion detected message so reset to motion inactive is performed in code
+	runIn(seconds, resetToMotionInactive)
 	return [
-		name: 'temperature',
-		value: temp,
-		unit: "${temperatureScale}",
+		name: 'motion',
+		value: 'active',
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Temperature is ${temp}°${temperatureScale}",
-		translatable:true
+		descriptionText: "${device.displayName}: Detected motion",
 	]
 }
 
-// Calculate humidity with 0.1 precision
-private parseHumidity(description) {
-	float humidity = Integer.parseInt(description,16)/100
-	//log.debug "${device.displayName}: Raw reported humidity = ${humidity}%"
-	humidity = humidityOffset ? (humidity + humidityOffset) : humidity
-	humidity = humidity.round(1)
+private parseIlluminance(description) {
+	lux = Integer.parseInt(description,16)
 	return [
-		name: 'humidity',
-		value: humidity,
-		unit: "%",
+		name: 'illuminance',
+		value: lux,
+		unit: 'lux',
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Humidity is ${humidity}%",
-	]
-}
-
-// Parse pressure report
-private parsePressure(description) {
-	float pressureval = Integer.parseInt(description[0..3], 16)
-	if (!(PressureUnits)) {
-		PressureUnits = "mbar"
-	}
-	// log.debug "${device.displayName}: Converting ${pressureval} to ${PressureUnits}"
-	switch (PressureUnits) {
-		case "mbar":
-			pressureval = (pressureval/10) as Float
-			pressureval = pressureval.round(1);
-			break;
-		case "kPa":
-			pressureval = (pressureval/100) as Float
-			pressureval = pressureval.round(2);
-			break;
-		case "inHg":
-			pressureval = (((pressureval/10) as Float) * 0.0295300)
-			pressureval = pressureval.round(2);
-			break;
-		case "mmHg":
-			pressureval = (((pressureval/10) as Float) * 0.750062)
-			pressureval = pressureval.round(2);
-			break;
-	}
-	// log.debug "${device.displayName}: Pressure is ${pressureval} ${PressureUnits} before applying the pressure offset."
-	pressureval = pressOffset ? (pressureval + pressOffset) : pressureval
-	pressureval = pressureval.round(2);
-
-	return [
-		name: 'pressure',
-		value: pressureval,
-		unit: PressureUnits,
-		isStateChange: true,
-		descriptionText: "${device.displayName}: Pressure is ${pressureval} ${PressureUnits}"
+		descriptionText: "${device.displayName}: Illuminance is ${lux} lux"
 	]
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
-    //log.debug "${device.displayName}: Battery bytes = ${(description[8..9] + description[6..7])}"
-    def rawValue = Integer.parseInt((description[8..9] + description[6..7]),16)
-    //log.debug "${device.displayName}: Raw battery integer = ${rawValue}"
-    def rawVolts = rawValue / 1000
-    def minVolts = voltsmin ? voltsmin : 2.5
-    def maxVolts = voltsmax ? voltsmax : 3.0
-    def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
-    def roundedPct = Math.min(100, Math.round(pct * 100))
-    def result = [
-        name: 'battery',
-        value: roundedPct,
-        unit: "%",
-        isStateChange: true,
-        descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
-    ]
-    return result
+	def MsgLength = description.size()
+	def rawValue
+	for (int i = 4; i < (MsgLength-3); i+=2) {
+		if (description[i..(i+1)] == "21") { // Search for byte preceeding battery voltage bytes
+			rawValue = Integer.parseInt((description[(i+4)..(i+5)] + description[(i+2)..(i+3)]),16)
+			break
+		}
+	}
+	def rawVolts = rawValue / 1000
+	def minVolts = voltsmin ? voltsmin : 2.5
+	def maxVolts = voltsmax ? voltsmax : 3.0
+	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
+	def roundedPct = Math.min(100, Math.round(pct * 100))
+	def result = [
+		name: 'battery',
+		value: roundedPct,
+		unit: "%",
+		isStateChange: true,
+		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+	]
+	return result
+}
+
+// If currently in 'active' motion detected state, resetToMotionInactive() resets to 'inactive' state and displays 'no motion'
+def resetToMotionInactive() {
+	if (device.currentState('motion')?.value == "active") {
+		def seconds = motionreset ? motionreset : 60
+		def inactiveText = "${device.displayName} reset to motion inactive after ${seconds} seconds"
+		sendEvent(
+			name:'motion',
+			value:'inactive',
+			isStateChange: true,
+			descriptionText: inactiveText
+		)
+		log.debug inactiveText
+	}
 }
 
 //Reset the batteryLastReplaced date to current date
