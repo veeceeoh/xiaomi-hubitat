@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Aqara Motion Sensor
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.5
+ *  Version 0.5.1
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -39,15 +39,16 @@ metadata {
 
 		attribute "lastCheckin", "String"
 		attribute "lastCheckinDate", "String"
-    attribute "lastMotion", "String"
-    attribute "lastMotionDate", "String"
+		attribute "lastMotion", "String"
+		attribute "lastMotionDate", "String"
 		attribute "batteryLastReplaced", "String"
 
-		//fingerprint for Xioami Aqara Motion Sensor
-		fingerprint endpointId: "01", profileId: "0104", deviceId: "0107", inClusters: "0000,FFFF,0406,0400,0500,0001,0003", outClusters: "0000,0019", manufacturer: "LUMI", model: "lumi.sensor_motion.aq2", deviceJoinName: "Xiaomi Aqara Motion Sensor"
+		//fingerprint for both versions of Xioami Aqara Motion Sensor
+		fingerprint endpointId: "01", profileId: "0104", deviceId: "0107", inClusters: "0000,FFFF,0406,0400", outClusters: "0000,0019", manufacturer: "LUMI", model: "lumi.sensor_motion.aq2"
+		fingerprint endpointId: "01", profileId: "0104", deviceId: "0107", inClusters: "0000,FFFF,0406,0400,0500,0001,0003", outClusters: "0000,0019", manufacturer: "LUMI", model: "lumi.sensor_motion.aq2"
 
 		command "resetBatteryReplacedDate"
-    command "resetToMotionInactive"
+		command "resetToMotionInactive"
 	}
 
 	preferences {
@@ -188,11 +189,11 @@ def configure() {
 
 // updated() will run twice every time user saves preferences
 def updated() {
-    log.debug "${device.displayName}: Updating preference settings"
-        if(battReset){
-        resetBatteryReplacedDate()
-        device.updateSetting("battReset", false)
-    }
+	log.debug "${device.displayName}: Updating preference settings"
+	if(battReset){
+		resetBatteryReplacedDate()
+		device.updateSetting("battReset", false)
+	}
 }
 
 def formatDate(batteryReset) {
