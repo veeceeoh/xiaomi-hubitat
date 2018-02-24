@@ -230,8 +230,8 @@ def formatDate(batteryReset) {
 	// If user's hub timezone is not set, display error messages in log and events log, and set timezone to GMT to avoid errors
 	if (!(location.timeZone)) {
 		correctedTimezone = TimeZone.getTimeZone("GMT")
-		log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your location in the SmartThings mobile app."
-		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your location in the SmartThings mobile app.")
+    log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your Hubitat hub location."
+		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your Hubitat hub location.")
 	}
 	else {
 		correctedTimezone = location.timeZone
