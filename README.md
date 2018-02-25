@@ -20,6 +20,8 @@ These devices are not easy to pair initially. More information and help is avail
 |**Xiaomi Motion Sensor**|**Xiaomi Aqara Motion Sensor**|
 |![Xiaomi Door/Window Sensor](images/door.jpg)|![Xiaomi Aqara Door/Window Sensor](images/aqaradoor.jpg)|
 |**Xiaomi Door/Window Sensor**|**Xiaomi Aqara Door/Window Sensor**|
+|![Xiaomi Aqara Leak Sensor](images/aqarawater.jpg)||
+|**Xiaomi Aqara Leak Sensor**||
 
 ## Device Drivers In Progress
 
@@ -27,5 +29,5 @@ These devices are not easy to pair initially. More information and help is avail
 |---|---|
 |![Xiaomi Button](images/button.jpg)|![Xiaomi Aqara Button](images/aqarabutton.jpg)|
 |**Xiaomi Button**|**Xiaomi Aqara Button**|
-|![Xiaomi mijia Honeywell Fire Alarm Detector](images/smoke.jpg)|![Xiaomi Aqara Leak Sensor](images/aqarawater.jpg)|
-|**Xiaomi mijia Honeywell Fire Alarm Detector**|**Xiaomi Aqara Leak Sensor**|
+|![Xiaomi mijia Honeywell Fire Alarm Detector](images/smoke.jpg)||
+|**Xiaomi mijia Honeywell Fire Alarm Detector**||
