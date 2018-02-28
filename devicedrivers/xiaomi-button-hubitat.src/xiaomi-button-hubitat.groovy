@@ -1,7 +1,7 @@
 /**
- *  Xiaomi "Original" & Aqara Door/Window Sensor
+ *  Xiaomi "Original" Button
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.3b
+ *  Version 0.5b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -32,7 +32,7 @@
  */
 
 metadata {
-	definition (name: "Xiaomi Door/Window Sensor", namespace: "veeceeoh", author: "veeceeoh") {
+	definition (name: "Xiaomi Button", namespace: "veeceeoh", author: "veeceeoh") {
 		capability "PushableButton"
 		capability "HoldableButton"
 		capability "Sensor"
@@ -49,6 +49,8 @@ metadata {
 	}
 
 	preferences {
+		//Button Config
+		input "waittoHeld", "number", title: "Hold button for __ seconds to set button 1 'held' state (default = 1).", description: "", range: "1..60"
 		//Date & Time Config
 		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
 		input name: "clockformat", type: "bool", title: "Use 24 hour clock?", description: ""
@@ -63,7 +65,7 @@ def parse(String description) {
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	log.debug "${device.displayName}: Parsing description: ${description}"
+	//log.debug "${device.displayName}: Parsing description: ${description}"
 
 	// Determine current time and date in the user-selected date format and clock style
 	def now = formatDate()
@@ -96,37 +98,36 @@ def parse(String description) {
 
 // Parse button message (press, double-click, triple-click, quad-click, and release)
 private parseButtonMessage(attrValue) {
-	def clickType = ["single", "", "double", "triple", "quadruple"]
-	def descrText
-	// On release when countdown is not active, take no action
-	if (!((attrValue == 1) & (state.countdownActive = false))) {
-		// On single-press start heldState countdown but do not generate event
-		if (attrValue == 0) {
-			runIn((waittoHeld ?: 3), heldState)
-			state.countdownActive = true
-		// On multi-click or release after single-press generate a pushed event
-		} else {
-			state.countdownActive = false
-			return [
-				name: 'pushed',
-				value: attrValue,
-				isStateChange: true,
-				descriptionText: "${device.displayName}: Button ${attrValue} was pushed (via ${clickType[attrValue]}-click)"
-			]
-		}
+	def clickType = ["", "single", "double", "triple", "quadruple"]
+	// On single-press start heldState countdown but do not generate event
+	if (attrValue == 0) {
+		runIn((waittoHeld ?: 1), heldState)
+		state.countdownActive = true
+	// On multi-click or release when countdown active generate a pushed event
+	} else if (state.countdownActive == true || attrValue > 1) {
+		state.countdownActive = false
+		return [
+			name: 'pushed',
+			value: attrValue,
+			isStateChange: true,
+			descriptionText: "${device.displayName}: Button ${attrValue} was pushed (${clickType[attrValue]}-click)"
+		]
 	}
 	return [:]
 }
 
 //set held state if button has not yet been released after single-press
 def heldState() {
+	def descText = "${device.displayName}: Button 1 was held"
 	if (state.countdownActive == true) {
+        state.countdownActive = false
 		sendEvent(
 			name: 'held',
 			value: 1,
 			isStateChange: true,
-			descriptionText: "${device.displayName}: Button 1 was held"
+			descriptionText: descText
 		)
+	log.debug descText
 	}
 }
 
