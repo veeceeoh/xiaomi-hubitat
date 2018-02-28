@@ -110,7 +110,7 @@ private parseButtonMessage(attrValue) {
 			return [
 				name: 'pushed',
 				value: attrValue,
-				isStateChange: true
+				isStateChange: true,
 				descriptionText: "${device.displayName}: Button ${attrValue} was pushed (via ${clickType[attrValue]}-click)"
 			]
 		}
