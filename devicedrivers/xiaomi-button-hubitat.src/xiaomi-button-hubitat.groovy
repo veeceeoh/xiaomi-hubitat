@@ -1,7 +1,7 @@
 /**
  *  Xiaomi "Original" Button
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.5b
+ *  Version 0.6b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -53,10 +53,11 @@ metadata {
 		input "waittoHeld", "number", title: "Hold button for __ seconds to set button 1 'held' state (default = 1).", description: "", range: "1..60"
 		//Date & Time Config
 		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
-		input name: "clockformat", type: "bool", title: "Use 24 hour clock?", description: ""
+		input name: "clockformat", type: "bool", title: "Use 24 hour clock", description: ""
 		//Battery Reset Config
 		input name: "voltsmin", title: "Min Volts (A battery needs replacing at ___ volts, Range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
 		input name: "voltsmax", title: "Max Volts (A battery is at 100% at ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: false
 	}
 }
 
@@ -65,7 +66,7 @@ def parse(String description) {
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	//log.debug "${device.displayName}: Parsing description: ${description}"
+	displayDebugLog("Parsing description: ${description}")
 
 	// Determine current time and date in the user-selected date format and clock style
 	def now = formatDate()
@@ -81,16 +82,16 @@ def parse(String description) {
 	if (cluster == "0006") {
 		map = parseButtonMessage(Integer.parseInt(valueHex))
 	} else if (cluster == "0000" & attrId == "0005") {
-		log.debug "${device.displayName}: Reset button was short-pressed"
+		displayDebugLog("Reset button was short-pressed")
 		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
 	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
 		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
 	} else if (!(cluster == "0000" & attrId == "0001")) {
-		log.debug "${device.displayName}: Unable to parse ${description}"
+		displayDebugLog("Unable to parse ${description}")
 	}
 
 	if (map) {
-		log.debug "${map.descriptionText}"
+		displayDebugLog("${map.descriptionText}")
 		return createEvent(map)
 	} else
 		return [:]
@@ -98,7 +99,8 @@ def parse(String description) {
 
 // Parse button message (press, double-click, triple-click, quad-click, and release)
 private parseButtonMessage(attrValue) {
-	def clickType = ["", "single", "double", "triple", "quadruple"]
+	def clickType = ["", "single", "double", "triple", "quadruple", "shizzle"]
+    attrValue = (attrValue < 5) ? attrValue : 5
 	// On single-press start heldState countdown but do not generate event
 	if (attrValue == 0) {
 		runIn((waittoHeld ?: 1), heldState)
@@ -118,22 +120,22 @@ private parseButtonMessage(attrValue) {
 
 //set held state if button has not yet been released after single-press
 def heldState() {
-	def descText = "${device.displayName}: Button 1 was held"
+	def descText = "Button 1 was held"
 	if (state.countdownActive == true) {
-        state.countdownActive = false
+		state.countdownActive = false
 		sendEvent(
 			name: 'held',
 			value: 1,
 			isStateChange: true,
-			descriptionText: descText
+			descriptionText: "${device.displayName}: ${descText}"
 		)
-	log.debug descText
+	displayDebugLog(descText)
 	}
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
-	//log.debug "${device.displayName}: Battery parse string = ${description}"
+	displayDebugLog("${device.displayName}: Battery parse string = ${description}")
 	def MsgLength = description.size()
 	def rawValue
 	for (int i = 4; i < (MsgLength-3); i+=2) {
@@ -162,32 +164,50 @@ def resetBatteryReplacedDate(paired) {
 	def now = formatDate(true)
 	def newlyPaired = paired ? " for newly paired sensor" : ""
 	sendEvent(name: "batteryLastReplaced", value: now)
-	log.debug "${device.displayName}: Setting Battery Last Replaced to current date${newlyPaired}"
+	displayDebugLog("Setting Battery Last Replaced to current date${newlyPaired}")
+}
+
+private def displayDebugLog(message) {
+	if (debugLogging) log.debug "${device.displayName}: ${message}"
+}
+
+// this call is here to avoid Groovy errors when the Push command is used
+// it is empty because the Xioami button is non-controllable
+def push() {
+	displayDebugLog("Fo' shizzle this button can't be controlled!")
+}
+
+// this call is here to avoid Groovy errors when the Hold command is used
+// it is empty because the Xioami button is non-controllable
+def hold() {
+	displayDebugLog("Fo' shizzle this button can't be controlled!")
 }
 
 // installed() runs just after a sensor is paired
 def installed() {
 	log.debug "${device.displayName}: Installing"
-	state.countdownActive = true
-	if (!batteryLastReplaced) resetBatteryReplacedDate(true)
+    sendEvent(name: "numberOfButtons", value: 5)
+	state.countdownActive = false
+	if (!batteryLastReplaced)
+		resetBatteryReplacedDate(true)
 }
 
 // configure() runs after installed() when a sensor is paired or reconnected
 def configure() {
 	log.debug "${device.displayName}: Configuring"
-	state.countdownActive = true
-	if (!batteryLastReplaced) resetBatteryReplacedDate(true)
+	sendEvent(name: "numberOfButtons", value: 5)
+	log.debug "${device.displayName}: Number of buttons = 5"
+	state.countdownActive = false
+	if (!batteryLastReplaced)
+		resetBatteryReplacedDate(true)
 	return
 }
 
 // updated() runs every time user saves preferences
 def updated() {
-	log.debug "${device.displayName}: Updating preference settings"
-	state.countdownActive = true
-	if(battReset){
-		resetBatteryReplacedDate()
-		device.updateSetting("battReset", false)
-	}
+	displayDebugLog("Updating preference settings")
+	sendEvent(name: "numberOfButtons", value: 5)
+	state.countdownActive = false
 }
 
 def formatDate(batteryReset) {
