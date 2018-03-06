@@ -1,31 +1,31 @@
 /**
- *  Xiaomi "Original" & Aqara Temperature Humidity Sensor
- *  Device Driver for Hubitat Elevation hub
- *  Version 0.5.1
+ * Xiaomi "Original" & Aqara Temperature Humidity Sensor
+ * Device Driver for Hubitat Elevation hub
+ * Version 0.6
  *
  *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
- *  in compliance with the License. You may obtain a copy of the License at:
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at:
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
- *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
- *  for the specific language governing permissions and limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ * for the specific language governing permissions and limitations under the License.
  *
- *  Based on SmartThings device handler code by a4refillpad
- *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
- *  Code reworked for use with Hubitat Elevation hub by veeceeoh
+ * Based on SmartThings device handler code by a4refillpad
+ * With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
+ * Code reworked for use with Hubitat Elevation hub by veeceeoh
  *
- *  Known issues:
- *  + Xiaomi devices send reports based on changes, and a status report every 50-60 minutes. These settings cannot be adjusted.
- *  + The battery level / voltage is not reported at pairing. Wait for the first status report, 50-60 minutes after pairing.
- *  + Pairing Xiaomi devices can be difficult as they were not designed to use with a Hubitat hub.
- *    Holding the sensor's reset button until the LED blinks will start pairing mode.
- *    3 quick flashes indicates success, while one long flash means pairing has not started yet.
- *    In either case, keep the sensor "awake" by short-pressing the reset button repeatedly, until recognized by Hubitat.
- *  + The connection can be dropped without warning. To reconnect, put Hubitat in "Discover Devices" mode, then short-press
- *    the sensor's reset button, and wait for the LED - 3 quick flashes indicates reconnection. Otherwise, short-press again.
+ * Known issues:
+ * + Xiaomi devices send reports based on changes, and a status report every 50-60 minutes. These settings cannot be adjusted.
+ * + The battery level / voltage is not reported at pairing. Wait for the first status report, 50-60 minutes after pairing.
+ * + Pairing Xiaomi devices can be difficult as they were not designed to use with a Hubitat hub.
+ *  Holding the sensor's reset button until the LED blinks will start pairing mode.
+ *  3 quick flashes indicates success, while one long flash means pairing has not started yet.
+ *  In either case, keep the sensor "awake" by short-pressing the reset button repeatedly, until recognized by Hubitat.
+ * + The connection can be dropped without warning. To reconnect, put Hubitat in "Discover Devices" mode, then short-press
+ *  the sensor's reset button, and wait for the LED - 3 quick flashes indicates reconnection. Otherwise, short-press again.
  *
  */
 
@@ -58,8 +58,10 @@ metadata {
 		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
 		input name: "clockformat", type: "bool", title: "Use 24 hour clock?", description: ""
 		//Battery Voltage Offset
-    input name: "voltsmin", title: "Min Volts (A battery needs replacing at ___ volts, Range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (A battery is at 100% at ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		//Debug logging Config
+		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: false
 	}
 }
 
@@ -68,7 +70,7 @@ def parse(String description) {
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	//log.debug "${device.displayName}: Parsing description: ${description}"
+	displayDebugLog("Parsing description: ${description}")
 
 	// Determine current time and date in the user-selected date format and clock style
 	def now = formatDate()
@@ -89,15 +91,15 @@ def parse(String description) {
 	} else if (cluster == "0403") {
 		map = parsePressure(valueHex)
 	} else if (cluster == "0000" & attrId == "0005") {
-		log.debug "${device.displayName}: Reset button was short-pressed"
-	} else if  (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
+		displayDebugLog("Reset button was short-pressed")
+	} else if	(cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
 		map = parseBattery(valueHex)
 	} else {
-		log.debug "${device.displayName}: was unable to parse ${description}"
+		displayDebugLog("Unable to parse ${description}")
 	}
 
 	if (map) {
-		log.debug "${map.descriptionText}"
+		displayDebugLog("${(map.descriptionText - device.displayName).trim()}")
 		return createEvent(map)
 	} else
 		return [:]
@@ -106,7 +108,7 @@ def parse(String description) {
 // Calculate temperature with 0.1 precision in C or F unit as set by hub location settings
 private parseTemperature(description) {
 	float temp = Integer.parseInt(description,16)/100
-	//log.debug "${device.displayName}: Raw reported temperature = ${temp}°C"
+	displayDebugLog("Raw reported temperature = ${temp}°C")
 	def offset = tempOffset ? tempOffset : 0
 	temp = (temp > 100) ? (temp - 655.35) : temp
 	temp = (temperatureScale == "F") ? ((temp * 1.8) + 32) + offset : temp + offset
@@ -124,7 +126,7 @@ private parseTemperature(description) {
 // Calculate humidity with 0.1 precision
 private parseHumidity(description) {
 	float humidity = Integer.parseInt(description,16)/100
-	//log.debug "${device.displayName}: Raw reported humidity = ${humidity}%"
+	displayDebugLog("Raw reported humidity = ${humidity}%")
 	humidity = humidityOffset ? (humidity + humidityOffset) : humidity
 	humidity = humidity.round(1)
 	return [
@@ -142,7 +144,7 @@ private parsePressure(description) {
 	if (!(PressureUnits)) {
 		PressureUnits = "mbar"
 	}
-	// log.debug "${device.displayName}: Converting ${pressureval} to ${PressureUnits}"
+	displayDebugLog("Converting ${pressureval} to ${PressureUnits}")
 	switch (PressureUnits) {
 		case "mbar":
 			pressureval = (pressureval/10) as Float
@@ -161,7 +163,6 @@ private parsePressure(description) {
 			pressureval = pressureval.round(2);
 			break;
 	}
-	// log.debug "${device.displayName}: Pressure is ${pressureval} ${PressureUnits} before applying the pressure offset."
 	pressureval = pressOffset ? (pressureval + pressOffset) : pressureval
 	pressureval = pressureval.round(2);
 
@@ -176,51 +177,56 @@ private parsePressure(description) {
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
-    //log.debug "${device.displayName}: Battery bytes = ${(description[8..9] + description[6..7])}"
-    def rawValue = Integer.parseInt((description[8..9] + description[6..7]),16)
-    //log.debug "${device.displayName}: Raw battery integer = ${rawValue}"
-    def rawVolts = rawValue / 1000
-    def minVolts = voltsmin ? voltsmin : 2.5
-    def maxVolts = voltsmax ? voltsmax : 3.0
-    def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
-    def roundedPct = Math.min(100, Math.round(pct * 100))
-    def result = [
-        name: 'battery',
-        value: roundedPct,
-        unit: "%",
-        isStateChange: true,
-        descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
-    ]
-    return result
+	displayDebugLog("Battery parse string = ${(description[6..9]}")
+	def rawValue = Integer.parseInt((description[8..9] + description[6..7]),16)
+	def rawVolts = rawValue / 1000
+	def minVolts = voltsmin ? voltsmin : 2.5
+	def maxVolts = voltsmax ? voltsmax : 3.0
+	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
+	def roundedPct = Math.min(100, Math.round(pct * 100))
+	def result = [
+		name: 'battery',
+		value: roundedPct,
+		unit: "%",
+		isStateChange: true,
+		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+	]
+	return result
 }
 
 //Reset the batteryLastReplaced date to current date
 def resetBatteryReplacedDate(paired) {
 	def now = formatDate(true)
-	def newlyPaired = paired ? " for newly paired sensor" : ""
+	def logText = "Setting Battery Last Replaced to current date"
 	sendEvent(name: "batteryLastReplaced", value: now)
-	log.debug "${device.displayName}: Setting Battery Last Replaced to current date${newlyPaired}"
+	if (paired)
+		log.debug "${logText} for newly paired sensor"
+	displayDebugLog(logText)
+}
+
+private def displayDebugLog(message) {
+	if (debugLogging) log.debug "${device.displayName}: ${message}"
 }
 
 // installed() runs just after a sensor is paired
 def installed() {
+	displayDebugLog("Installing")
 	if (!batteryLastReplaced) resetBatteryReplacedDate(true)
 }
 
 // configure() runs after installed() when a sensor is paired
 def configure() {
-	log.debug "${device.displayName}: Configuring"
-	if (!batteryLastReplaced) resetBatteryReplacedDate(true)
+	displayDebugLog("Configuring")
 	return
 }
 
-// updated() will run twice every time user saves preferences
+// updated() will run every time user saves preferences
 def updated() {
-    log.debug "${device.displayName}: Updating preference settings"
-        if(battReset){
-        resetBatteryReplacedDate()
-        device.updateSetting("battReset", false)
-    }
+	displayDebugLog("Updating preference settings")
+	if(battReset){
+		resetBatteryReplacedDate()
+		device.updateSetting("battReset", false)
+	}
 }
 
 def formatDate(batteryReset) {
@@ -230,7 +236,7 @@ def formatDate(batteryReset) {
 	// If user's hub timezone is not set, display error messages in log and events log, and set timezone to GMT to avoid errors
 	if (!(location.timeZone)) {
 		correctedTimezone = TimeZone.getTimeZone("GMT")
-    log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your Hubitat hub location."
+		log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your Hubitat hub location."
 		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your Hubitat hub location.")
 	}
 	else {
