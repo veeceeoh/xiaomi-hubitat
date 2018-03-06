@@ -94,7 +94,7 @@ def parse(String description) {
 	}
 
 	if (map) {
-		displayDebugLog("${(map.descriptionText - device.displayName).trim()}")
+		displayDebugLog(map.descriptionText)
 		return createEvent(map)
 	} else
 		return [:]
@@ -109,7 +109,7 @@ private parseMotion() {
 		name: 'motion',
 		value: 'active',
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Detected motion",
+		descriptionText: "Detected motion",
 	]
 }
 
@@ -134,7 +134,7 @@ private parseBattery(description) {
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
 	]
 	return result
 }
@@ -143,7 +143,7 @@ private parseBattery(description) {
 def resetToMotionInactive() {
 	if (device.currentState('motion')?.value == "active") {
 		def seconds = motionreset ? motionreset : 60
-		def inactiveText = "${device.displayName} reset to motion inactive after ${seconds} seconds"
+		def inactiveText = "Reset to motion inactive after ${seconds} seconds"
 		sendEvent(
 			name:'motion',
 			value:'inactive',
