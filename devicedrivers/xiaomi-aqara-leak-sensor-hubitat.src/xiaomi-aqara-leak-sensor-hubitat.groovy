@@ -98,7 +98,7 @@ def parse(String description) {
 	}
 
 	if (map) {
-		displayDebugLog("${(map.descriptionText - device.displayName).trim()}")
+		displayDebugLog(map.descriptionText)
 		return createEvent(map)
 	} else
 		return [:]
@@ -107,16 +107,16 @@ def parse(String description) {
 // Parse IAS Zone Status message (wet or dry)
 private parseZoneStatusMessage(description) {
 	def value = "dry"
-	def status = "is dry"
+	def status = "Sensor is dry"
 	if (description?.startsWith('zone status 0x0001')) {
 		value = "wet"
-		status = "detected water"
+		status = "Sensor detected water"
 	}
 	return [
 		name: 'water',
 		value: value,
 		isStateChange: true,
-		descriptionText: "${device.displayName} ${status}"
+		descriptionText: "${status}"
 	]
 }
 
@@ -141,7 +141,7 @@ private parseBattery(description) {
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
 	]
 	return result
 }
@@ -149,7 +149,7 @@ private parseBattery(description) {
 // Manually override contact state to dry
 def resetToDry() {
 	if (device.currentState('water')?.value == "wet") {
-		def dryText = "${device.displayName}: Manually reset to dry"
+		def dryText = "Manually reset to dry"
 		sendEvent(
 			name:'water',
 			value:'dry',
@@ -163,7 +163,7 @@ def resetToDry() {
 // Manually override contact state to wet
 def resetToWet() {
 	if (device.currentState('water')?.value == "dry") {
-		def wetText = "${device.displayName}: Manually reset to wet"
+		def wetText = "Manually reset to wet"
 		sendEvent(
 			name:'water',
 			value:'wet',
