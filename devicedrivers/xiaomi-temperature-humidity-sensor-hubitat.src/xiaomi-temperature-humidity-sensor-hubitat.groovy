@@ -177,7 +177,7 @@ private parsePressure(description) {
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
-	displayDebugLog("Battery parse string = ${(description[6..9]}")
+	displayDebugLog("Battery parse string = ${description[6..9]}")
 	def rawValue = Integer.parseInt((description[8..9] + description[6..7]),16)
 	def rawVolts = rawValue / 1000
 	def minVolts = voltsmin ? voltsmin : 2.5
