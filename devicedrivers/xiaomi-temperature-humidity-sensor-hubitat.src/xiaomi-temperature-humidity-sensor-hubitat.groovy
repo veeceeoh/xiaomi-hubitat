@@ -99,7 +99,7 @@ def parse(String description) {
 	}
 
 	if (map) {
-		displayDebugLog("${(map.descriptionText - device.displayName).trim()}")
+		displayDebugLog(map.descriptionText)
 		return createEvent(map)
 	} else
 		return [:]
@@ -118,7 +118,7 @@ private parseTemperature(description) {
 		value: temp,
 		unit: "${temperatureScale}",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Temperature is ${temp}°${temperatureScale}",
+		descriptionText: "Temperature is ${temp}°${temperatureScale}",
 		translatable:true
 	]
 }
@@ -134,7 +134,7 @@ private parseHumidity(description) {
 		value: humidity,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Humidity is ${humidity}%",
+		descriptionText: "Humidity is ${humidity}%",
 	]
 }
 
@@ -171,13 +171,13 @@ private parsePressure(description) {
 		value: pressureval,
 		unit: PressureUnits,
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Pressure is ${pressureval} ${PressureUnits}"
+		descriptionText: "Pressure is ${pressureval} ${PressureUnits}"
 	]
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
-	displayDebugLog("Battery parse string = ${description[6..9]}")
+	displayDebugLog("Battery parse string = ${(description[6..9]}")
 	def rawValue = Integer.parseInt((description[8..9] + description[6..7]),16)
 	def rawVolts = rawValue / 1000
 	def minVolts = voltsmin ? voltsmin : 2.5
@@ -189,7 +189,7 @@ private parseBattery(description) {
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
 	]
 	return result
 }
