@@ -113,7 +113,7 @@ private parseContact(openClosed) {
 		name: 'contact',
 		value: value,
 		isStateChange: true,
-		descriptionText: "${device.displayName} was ${value == 'open' ? 'opened' : 'closed'}"
+		descriptionText: "Contact was ${value == 'open' ? 'opened' : 'closed'}"
 	]
 }
 
@@ -138,7 +138,7 @@ private parseBattery(description) {
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
 	]
 	return result
 }
@@ -146,7 +146,7 @@ private parseBattery(description) {
 // Manually override contact state to closed
 def resetToClosed() {
 	if (device.currentState('contact')?.value == "open") {
-		def closedText = "${device.displayName}: Manually reset to closed"
+		def closedText = "Manually reset to closed"
 		sendEvent(
 			name:'contact',
 			value:'closed',
@@ -160,7 +160,7 @@ def resetToClosed() {
 // Manually override contact state to open
 def resetToOpen() {
 	if (device.currentState('contact')?.value == "closed") {
-		def openText = "${device.displayName}: Manually reset to open"
+		def openText = "Manually reset to open"
 		sendEvent(
 			name:'contact',
 			value:'open',
