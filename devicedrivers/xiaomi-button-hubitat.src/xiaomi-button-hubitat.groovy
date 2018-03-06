@@ -1,7 +1,7 @@
 /**
  *  Xiaomi "Original" Button
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.6b
+ *  Version 0.7b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -41,6 +41,7 @@ metadata {
 		attribute "lastCheckin", "String"
 		attribute "lastCheckinDate", "String"
 		attribute "batteryLastReplaced", "String"
+		attribute "buttonReleased", "String"
 
 		// this fingerprint is identical to the one for Xiaomi "Original" Door/Window Sensor except for model name
 		fingerprint endpointId: "01", profileId: "0104", deviceId: "0104", inClusters: "0000,0003,FFFF,0019", outClusters: "0000,0004,0003,0006,0008,0005,0019", manufacturer: "LUMI", model: "lumi.sensor_switch"
@@ -55,8 +56,9 @@ metadata {
 		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
 		input name: "clockformat", type: "bool", title: "Use 24 hour clock", description: ""
 		//Battery Reset Config
-		input name: "voltsmin", title: "Min Volts (A battery needs replacing at ___ volts, Range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (A battery is at 100% at ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		//Debug logging Config
 		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: false
 	}
 }
@@ -91,7 +93,7 @@ def parse(String description) {
 	}
 
 	if (map) {
-		displayDebugLog("${map.descriptionText}")
+		displayDebugLog("${(map.descriptionText - device.displayName).trim()}")
 		return createEvent(map)
 	} else
 		return [:]
@@ -100,7 +102,13 @@ def parse(String description) {
 // Parse button message (press, double-click, triple-click, quad-click, and release)
 private parseButtonMessage(attrValue) {
 	def clickType = ["", "single", "double", "triple", "quadruple", "shizzle"]
-    attrValue = (attrValue < 5) ? attrValue : 5
+	attrValue = (attrValue < 5) ? attrValue : 5
+	displayDebugLog("Attribute value = ${attrValue}, Click type = ${clickType}")
+	// On any release generate buttonReleased event for webCoRE use
+	if (attrValue == 1) {
+		sendEvent(name: "buttonReleased", value: formatDate(), descriptionText: "${device.displayName}: Button was released")
+		displayDebugLog("Button was released")
+	}
 	// On single-press start heldState countdown but do not generate event
 	if (attrValue == 0) {
 		runIn((waittoHeld ?: 1), heldState)
@@ -162,9 +170,11 @@ private parseBattery(description) {
 //Reset the batteryLastReplaced date to current date
 def resetBatteryReplacedDate(paired) {
 	def now = formatDate(true)
-	def newlyPaired = paired ? " for newly paired sensor" : ""
+	def logText = "Setting Battery Last Replaced to current date"
 	sendEvent(name: "batteryLastReplaced", value: now)
-	displayDebugLog("Setting Battery Last Replaced to current date${newlyPaired}")
+	if (paired)
+		log.debug "${logText} for newly paired sensor"
+	displayDebugLog(logText)
 }
 
 private def displayDebugLog(message) {
@@ -186,7 +196,7 @@ def hold() {
 // installed() runs just after a sensor is paired
 def installed() {
 	log.debug "${device.displayName}: Installing"
-    sendEvent(name: "numberOfButtons", value: 5)
+	sendEvent(name: "numberOfButtons", value: 5)
 	state.countdownActive = false
 	if (!batteryLastReplaced)
 		resetBatteryReplacedDate(true)
@@ -198,8 +208,6 @@ def configure() {
 	sendEvent(name: "numberOfButtons", value: 5)
 	log.debug "${device.displayName}: Number of buttons = 5"
 	state.countdownActive = false
-	if (!batteryLastReplaced)
-		resetBatteryReplacedDate(true)
 	return
 }
 
