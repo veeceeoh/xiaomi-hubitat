@@ -114,7 +114,7 @@ private parseMotion() {
 		name: 'motion',
 		value: 'active',
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Detected motion",
+		descriptionText: "Detected motion",
 	]
 }
 
@@ -125,7 +125,7 @@ private parseIlluminance(description) {
 		value: lux,
 		unit: 'lux',
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Illuminance is ${lux} lux"
+		descriptionText: "Illuminance is ${lux} lux"
 	]
 }
 
@@ -149,7 +149,7 @@ private parseBattery(description) {
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
 	]
 	return result
 }
@@ -158,7 +158,7 @@ private parseBattery(description) {
 def resetToMotionInactive() {
 	if (device.currentState('motion')?.value == "active") {
 		def seconds = motionreset ? motionreset : 60
-		def inactiveText = "${device.displayName} reset to motion inactive after ${seconds} seconds"
+		def inactiveText = "Reset to motion inactive after ${seconds} seconds"
 		sendEvent(
 			name:'motion',
 			value:'inactive',
