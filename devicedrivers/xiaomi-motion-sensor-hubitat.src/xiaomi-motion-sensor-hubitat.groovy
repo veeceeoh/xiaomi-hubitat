@@ -1,7 +1,7 @@
 /**
  *  Xiaomi "Original" Motion Sensor
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.5
+ *  Version 0.6
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -37,15 +37,15 @@ metadata {
 
 		attribute "lastCheckin", "String"
 		attribute "lastCheckinDate", "String"
-    attribute "lastMotion", "String"
-    attribute "lastMotionDate", "String"
+		attribute "lastMotion", "String"
+		attribute "lastMotionDate", "String"
 		attribute "batteryLastReplaced", "String"
 
 		//fingerprint for Xioami "original" Motion Sensor
 		fingerprint profileId: "0104", deviceId: "0104", inClusters: "0000, 0003, FFFF, 0019", outClusters: "0000, 0004, 0003, 0006, 0008, 0005, 0019", manufacturer: "LUMI", model: "lumi.sensor_motion", deviceJoinName: "Xiaomi Motion"
 
 		command "resetBatteryReplacedDate"
-    command "resetToMotionInactive"
+		command "resetToMotionInactive"
 	}
 
 	preferences {
@@ -55,8 +55,10 @@ metadata {
 		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
 		input name: "clockformat", type: "bool", title: "Use 24 hour clock?", description: ""
 		//Battery Reset Config
-    input name: "voltsmin", title: "Min Volts (A battery needs replacing at ___ volts, Range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (A battery is at 100% at ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		//Debug logging Config
+		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: false
 	}
 }
 
@@ -65,7 +67,7 @@ def parse(String description) {
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	//log.debug "${device.displayName}: Parsing description: ${description}"
+	displayDebugLog("Parsing description: ${description}")
 
 	// Determine current time and date in the user-selected date format and clock style
 	def now = formatDate()
@@ -84,15 +86,15 @@ def parse(String description) {
 		sendEvent(name: "lastMotion", value: now)
 		sendEvent(name: "lastMotionDate", value: nowDate)
 	} else if (cluster == "0000" & attrId == "0005") {
-		log.debug "${device.displayName}: Reset button was short-pressed"
-	} else if  (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
+		displayDebugLog("Reset button was short-pressed")
+	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
 		map = parseBattery(valueHex)
 	} else {
-		log.debug "${device.displayName}: was unable to parse ${description}"
+		displayDebugLog("Unable to parse ${description}")
 	}
 
 	if (map) {
-		log.debug "${map.descriptionText}"
+		displayDebugLog(map.descriptionText)
 		return createEvent(map)
 	} else
 		return [:]
@@ -107,12 +109,13 @@ private parseMotion() {
 		name: 'motion',
 		value: 'active',
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Detected motion",
+		descriptionText: "Detected motion",
 	]
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
+	displayDebugLog("Battery parse string = ${description}")
 	def MsgLength = description.size()
 	def rawValue
 	for (int i = 4; i < (MsgLength-3); i+=2) {
@@ -131,7 +134,7 @@ private parseBattery(description) {
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
 	]
 	return result
 }
@@ -140,44 +143,50 @@ private parseBattery(description) {
 def resetToMotionInactive() {
 	if (device.currentState('motion')?.value == "active") {
 		def seconds = motionreset ? motionreset : 60
-		def inactiveText = "${device.displayName} reset to motion inactive after ${seconds} seconds"
+		def inactiveText = "Reset to motion inactive after ${seconds} seconds"
 		sendEvent(
 			name:'motion',
 			value:'inactive',
 			isStateChange: true,
 			descriptionText: inactiveText
 		)
-		log.debug inactiveText
+		displayDebugLog(inactiveText)
 	}
 }
 
 //Reset the batteryLastReplaced date to current date
 def resetBatteryReplacedDate(paired) {
 	def now = formatDate(true)
-	def newlyPaired = paired ? " for newly paired sensor" : ""
+	def logText = "Setting Battery Last Replaced to current date"
 	sendEvent(name: "batteryLastReplaced", value: now)
-	log.debug "${device.displayName}: Setting Battery Last Replaced to current date${newlyPaired}"
+	if (paired)
+		log.debug "${logText} for newly paired sensor"
+	displayDebugLog(logText)
+}
+
+private def displayDebugLog(message) {
+	if (debugLogging) log.debug "${device.displayName}: ${message}"
 }
 
 // installed() runs just after a sensor is paired
 def installed() {
+	displayDebugLog("Installing")
 	if (!batteryLastReplaced) resetBatteryReplacedDate(true)
 }
 
 // configure() runs after installed() when a sensor is paired
 def configure() {
-	log.debug "${device.displayName}: Configuring"
-	if (!batteryLastReplaced) resetBatteryReplacedDate(true)
+	displayDebugLog("Configuring")
 	return
 }
 
-// updated() will run twice every time user saves preferences
+// updated() will run every time user saves preferences
 def updated() {
-    log.debug "${device.displayName}: Updating preference settings"
-        if(battReset){
-        resetBatteryReplacedDate()
-        device.updateSetting("battReset", false)
-    }
+	displayDebugLog("Updating preference settings")
+	if(battReset){
+		resetBatteryReplacedDate()
+		device.updateSetting("battReset", false)
+	}
 }
 
 def formatDate(batteryReset) {
