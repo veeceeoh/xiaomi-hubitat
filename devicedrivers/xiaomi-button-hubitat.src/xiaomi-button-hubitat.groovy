@@ -93,7 +93,7 @@ def parse(String description) {
 	}
 
 	if (map) {
-		displayDebugLog("${(map.descriptionText - device.displayName).trim()}")
+		displayDebugLog(map.descriptionText)
 		return createEvent(map)
 	} else
 		return [:]
@@ -106,7 +106,7 @@ private parseButtonMessage(attrValue) {
 	displayDebugLog("Attribute value = ${attrValue}, Click type = ${clickType}")
 	// On any release generate buttonReleased event for webCoRE use
 	if (attrValue == 1) {
-		sendEvent(name: "buttonReleased", value: formatDate(), descriptionText: "${device.displayName}: Button was released")
+		sendEvent(name: "buttonReleased", value: formatDate(), descriptionText: "Button was released")
 		displayDebugLog("Button was released")
 	}
 	// On single-press start heldState countdown but do not generate event
@@ -120,7 +120,7 @@ private parseButtonMessage(attrValue) {
 			name: 'pushed',
 			value: attrValue,
 			isStateChange: true,
-			descriptionText: "${device.displayName}: Button ${attrValue} was pushed (${clickType[attrValue]}-click)"
+			descriptionText: "Button ${attrValue} was pushed (${clickType[attrValue]}-click)"
 		]
 	}
 	return [:]
@@ -135,7 +135,7 @@ def heldState() {
 			name: 'held',
 			value: 1,
 			isStateChange: true,
-			descriptionText: "${device.displayName}: ${descText}"
+			descriptionText: descText
 		)
 	displayDebugLog(descText)
 	}
@@ -143,7 +143,7 @@ def heldState() {
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
-	displayDebugLog("${device.displayName}: Battery parse string = ${description}")
+	displayDebugLog("Battery parse string = ${description}")
 	def MsgLength = description.size()
 	def rawValue
 	for (int i = 4; i < (MsgLength-3); i+=2) {
@@ -162,7 +162,7 @@ private parseBattery(description) {
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
 	]
 	return result
 }
