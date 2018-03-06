@@ -99,7 +99,7 @@ def parse(String description) {
 	}
 
 	if (map) {
-		displayDebugLog("${(map.descriptionText - device.displayName).trim()}")
+		displayDebugLog(map.descriptionText)
 		return createEvent(map)
 	} else
 		return [:]
