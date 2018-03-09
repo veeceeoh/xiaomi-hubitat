@@ -1,7 +1,7 @@
 /**
- *  Xiaomi "Aqara" Button
+ *  Xiaomi Aqara Button - model WXKG11LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.1
+ *  Version 0.2
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -20,7 +20,7 @@
  *  Known issues:
  *  + Xiaomi devices send reports based on changes, and a status report every 50-60 minutes. These settings cannot be adjusted.
  *  + The battery level / voltage is not reported at pairing. Wait for the first status report, 50-60 minutes after pairing.
- *    However, the Aqara Door/Window sensor battery level can be retrieved immediately with a short-press of the reset button.
+ *    However, the Aqara Button battery level can be retrieved immediately with a short-press of the reset button.
  *  + Pairing Xiaomi devices can be difficult as they were not designed to use with a Hubitat hub.
  *    Holding the sensor's reset button until the LED blinks will start pairing mode.
  *    3 quick flashes indicates success, while one long flash means pairing has not started yet.
@@ -42,7 +42,7 @@ metadata {
 		attribute "batteryLastReplaced", "String"
 
 		// this fingerprint is identical to the one for Xiaomi "Aqara" Door/Window Sensor except for model name
-		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,FFFF,0006", outClusters: "0000,0004,FFFF", manufacturer: "LUMI", model: "lumi.sensor_switch.aq2", deviceJoinName: "Xiaomi Aqara Button"
+		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,FFFF,0006", outClusters: "0000,0004,FFFF", manufacturer: "LUMI", model: "lumi.sensor_switch.aq2"
 
 		command "resetBatteryReplacedDate"
 	}
@@ -50,7 +50,7 @@ metadata {
 	preferences {
 		//Button Config
 		input "ReleaseTime", "number", title: "Minimum time in seconds for a press to clear (default 2)", description: "", range: "1..60"
-        input name: "PressType", type: "enum", options: ["Momentary", "Toggle"], title: "Momentary or toggle? ", defaultValue: "Momentary"
+		input name: "PressType", type: "enum", options: ["Momentary", "Toggle"], title: "Momentary or toggle? ", defaultValue: "Momentary"
 		//Date & Time Config
 		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
 		input name: "clockformat", type: "bool", title: "Use 24 hour clock", description: ""
@@ -66,7 +66,7 @@ def parse(String description) {
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-    displayDebugLog("Parsing description: ${description}")
+	displayDebugLog("Parsing description: ${description}")
 
 	// Determine current time and date in the user-selected date format and clock style
 	def now = formatDate()
@@ -139,12 +139,11 @@ private Map getContactResult(value) {
     def clickType = ["released", "single clicked", "double clicked", "triple clicked", "quadruple clicked"]
     if (value <= 4)
     {
-        def descriptionText = "${device.displayName} was ${clickType[value]}"
         return [
             name: 'pushed',
             value: value,
             isStateChange: true,
-            descriptionText: descriptionText
+            descriptionText: "Button was ${clickType[value]}"
         ]
     }
     else
@@ -156,7 +155,7 @@ private Map getContactResult(value) {
 def ReleaseButton()
 {
     def result = [:]
-    displayDebugLog("${device.displayName}: Calling Release Button")
+    displayDebugLog("Calling Release Button")
     result = getContactResult(0)
     state.button = "released"
     displayDebugLog("${result.descriptionText}")
@@ -165,7 +164,7 @@ def ReleaseButton()
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
-	displayDebugLog("${device.displayName}: Battery parse string = ${description}")
+	displayDebugLog("Battery parse string = ${description}")
 	def MsgLength = description.size()
 	def rawValue
 	for (int i = 4; i < (MsgLength-3); i+=2) {
@@ -184,7 +183,7 @@ private parseBattery(description) {
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
 	]
 	return result
 }
@@ -216,7 +215,7 @@ def hold() {
 // installed() runs just after a sensor is paired
 def installed() {
 	log.debug "${device.displayName}: Installing"
-    sendEvent(name: "numberOfButtons", value: 2)
+	sendEvent(name: "numberOfButtons", value: 2)
 	state.countdownActive = false
 	if (!batteryLastReplaced)
 		resetBatteryReplacedDate(true)
