@@ -41,6 +41,8 @@ metadata {
 		attribute "lastCheckin", "String"
 		attribute "lastCheckinDate", "String"
 		attribute "batteryLastReplaced", "String"
+		attribute "buttonPressed", "String"
+		attribute "buttonHeld", "String"
 		attribute "buttonReleased", "String"
 
 		// this fingerprint is identical to the one for Xiaomi "Original" Door/Window Sensor except for model name
@@ -102,13 +104,12 @@ def parse(String description) {
 // Parse button message (press, double-click, triple-click, quad-click, and release)
 private parseButtonMessage(attrValue) {
 	def clickType = ["", "single", "double", "triple", "quadruple", "shizzle"]
+    def coreType = (attrValue == 1) ? "Released" : "Pressed"
 	attrValue = (attrValue < 5) ? attrValue : 5
-	displayDebugLog("Attribute value = ${attrValue}, Click type = ${clickType}")
-	// On any release generate buttonReleased event for webCoRE use
-	if (attrValue == 1) {
-		sendEvent(name: "buttonReleased", value: formatDate(), descriptionText: "Button was released")
-		displayDebugLog("Button was released")
-	}
+	displayDebugLog("Attribute value = ${attrValue}, Click type = ${clickType[attrValue]}")
+	// Generate buttonPressed or buttonReleased event for webCoRE use
+    sendEvent(name: "button${coreType}", value: new Date(formatDate()).getTime(), descriptionText: "button${coreType} (webCoRE)")
+	displayDebugLog("Button was ${coreType} (webCoRE)")
 	// On single-press start heldState countdown but do not generate event
 	if (attrValue == 0) {
 		runIn((waittoHeld ?: 1), heldState)
@@ -135,15 +136,16 @@ def heldState() {
 			name: 'held',
 			value: 1,
 			isStateChange: true,
-			descriptionText: descText
+			descriptionText: "${device.displayName}: ${descText}"
 		)
 	displayDebugLog(descText)
+	sendEvent(name: "buttonHeld", value: new Date(formatDate()).getTime(), descriptionText: "buttonHeld (webCoRE)")
 	}
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
-	displayDebugLog("Battery parse string = ${description}")
+	displayDebugLog("${device.displayName}: Battery parse string = ${description}")
 	def MsgLength = description.size()
 	def rawValue
 	for (int i = 4; i < (MsgLength-3); i+=2) {
@@ -162,7 +164,7 @@ private parseBattery(description) {
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
 	]
 	return result
 }
