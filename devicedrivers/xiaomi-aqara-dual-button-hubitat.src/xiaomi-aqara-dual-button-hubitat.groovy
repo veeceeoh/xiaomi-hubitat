@@ -73,7 +73,7 @@ def parse(String description) {
 		// Endpoint used for button number: 01 = Left, 02 = Right, 03 = Both
 		map = [
 			name: 'pushed',
-			value: buttonNumber,
+			value: endpoint,
 			isStateChange: true,
 			descriptionText: "${pressType[endpoint]} pushed"
 		]
