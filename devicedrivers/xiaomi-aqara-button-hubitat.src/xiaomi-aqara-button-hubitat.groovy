@@ -66,7 +66,7 @@ def parse(String description) {
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	displayDebugLog("Parsing description: ${description}")
+    displayDebugLog("Parsing description: ${description}")
 
 	// Determine current time and date in the user-selected date format and clock style
 	def now = formatDate()
@@ -80,7 +80,7 @@ def parse(String description) {
 
 	// Send message data to appropriate parsing function based on the type of report
 	if (cluster == "0006") {
-		map = parseButtonMessage(Integer.parseInt(valueHex))
+		map = parseButtonMessage(attrId, Integer.parseInt(valueHex))
 	} else if (cluster == "0000" & attrId == "0005") {
 		displayDebugLog("Reset button was short-pressed")
 		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
@@ -98,54 +98,67 @@ def parse(String description) {
 }
 
 // Parse button message (press, double-click, triple-click, quad-click, and release)
-private parseButtonMessage(attrValue){
+private parseButtonMessage(attrId, Value){
     def result = [:]
 
-    if (PressType == "Toggle")
+    if ((attrId=="0000") && (Value==1001))
     {
-        if ((state.button != "pushed") && (state.button != "released"))
+        if (PressType == "Toggle")
         {
-            state.button = "released"
-        }
-        if (state.button == "released")
-        {
-            result = getContactResult("pushed")
-            state.button = "pushed"
+            if ((state.button != "pushed") && (state.button != "released"))
+            {
+                state.button = "released"
+            }
+            if (state.button == "released")
+            {
+                result = getContactResult(1)
+                state.button = "pushed"
+            }
+            else
+            {
+                result = getContactResult(0)
+                state.button = "released"
+            }
         }
         else
         {
-            result = getContactResult("released")
-            state.button = "released"
+            result = getContactResult(1)
+            state.button = "pushed"
+            runIn(ReleaseTime, ReleaseButton)
         }
     }
-    else
+    else if (attrId=="8000")
     {
-        result = getContactResult("pushed")
-        state.button = "pushed"
-        runIn(ReleaseTime, ReleaseButton)
+        result = getContactResult(Value)
     }
     
      return result
 }
 
 private Map getContactResult(value) {
-    def descriptionText = "${device.displayName} was ${value == 'pushed' ? 'pushed' : 'released'}"
-    return [
-        name: 'button',
-        value: value,
-        data: [buttonNumber: "1"],
-        isStateChange: true,
-        descriptionText: descriptionText
-    ]
+    def clickType = ["released", "single clicked", "double clicked", "triple clicked", "quadruple clicked"]
+    if (value <= 4)
+    {
+        def descriptionText = "${device.displayName} was ${clickType[value]}"
+        return [
+            name: 'pushed',
+            value: value,
+            isStateChange: true,
+            descriptionText: descriptionText
+        ]
+    }
+    else
+    {
+        return [:]
+    }
 }
 
 def ReleaseButton()
 {
     def result = [:]
-    log.debug "${device.displayName}: Calling Release Button"
-    result = getContactResult("released")
+    displayDebugLog("${device.displayName}: Calling Release Button")
+    result = getContactResult(0)
     state.button = "released"
-    log.debug "${device.displayName}: ${result}"
     sendEvent(result)
 }
 
@@ -202,7 +215,7 @@ def hold() {
 // installed() runs just after a sensor is paired
 def installed() {
 	log.debug "${device.displayName}: Installing"
-    sendEvent(name: "numberOfButtons", value: 1)
+    sendEvent(name: "numberOfButtons", value: 2)
 	state.countdownActive = false
 	if (!batteryLastReplaced)
 		resetBatteryReplacedDate(true)
@@ -211,8 +224,8 @@ def installed() {
 // configure() runs after installed() when a sensor is paired or reconnected
 def configure() {
 	log.debug "${device.displayName}: Configuring"
-	sendEvent(name: "numberOfButtons", value: 1)
-	log.debug "${device.displayName}: Number of buttons = 1"
+	sendEvent(name: "numberOfButtons", value: 2)
+	log.debug "${device.displayName}: Number of buttons = 2"
 	state.countdownActive = false
 	if (!batteryLastReplaced)
 		resetBatteryReplacedDate(true)
@@ -222,7 +235,7 @@ def configure() {
 // updated() runs every time user saves preferences
 def updated() {
 	displayDebugLog("Updating preference settings")
-	sendEvent(name: "numberOfButtons", value: 1)
+	sendEvent(name: "numberOfButtons", value: 2)
 	state.countdownActive = false
 }
 
