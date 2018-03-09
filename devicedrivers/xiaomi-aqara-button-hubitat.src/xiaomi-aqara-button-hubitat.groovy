@@ -159,7 +159,8 @@ def ReleaseButton()
     displayDebugLog("${device.displayName}: Calling Release Button")
     result = getContactResult(0)
     state.button = "released"
-    sendEvent(result)
+    displayDebugLog("${result.descriptionText}")
+    createEvent(result)
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
