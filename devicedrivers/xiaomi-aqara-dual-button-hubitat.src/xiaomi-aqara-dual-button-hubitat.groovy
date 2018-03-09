@@ -1,7 +1,7 @@
 /*
- *  Xiaomi Aqara Dual Button
+ *  Xiaomi Aqara Smart Light Switch - Wireless 2 button model WXKG02LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.1b gn0st1c
+ *  Version 0.5 gn0st1c
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -15,18 +15,20 @@
  *
  *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
  *
- *
- * https://xiaomi-mi.com/sockets-and-sensors/xiaomi-aqara-smart-light-control-set/
+ * 
+ * https://xiaomi-mi.com/sockets-and-sensors/xiaomi-aqara-smart-light-control-set
  */
 
 metadata {
-	definition (name: "Xiaomi Aqara Dual Button", namespace: "gn0st1c", author: "gn0st1c") {
+	definition (name: "Xiaomi Aqara Dual Button Light Switch", namespace: "gn0st1c", author: "gn0st1c") {
 		capability "PushableButton"
 		capability "Battery"
 		capability "Sensor"
 
 		attribute "lastCheckin", "String"
 		attribute "lastCheckinDate", "String"
+		attribute "lastPressed", "String"
+		attribute "lastPressedDate", "String"
 		attribute "batteryLastReplaced", "String"
 
 		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw2Un"
@@ -50,10 +52,11 @@ metadata {
 // Parse incoming device messages to generate events
 def parse(String description) {
 	displayDebugLog "Parsing description: ${description}"
-	def endpoint = description.split(",").find {it.split(":")[0].trim() == "endpoint"}?.split(":")[1].trim()
-	def cluster	= description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
+	def endpoint = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "endpoint"}?.split(":")[1].trim())
+	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
+	def pressType = ["", "Left button", "Right button", "Both buttons"] 
 
 	// Determine current time and date in the user-selected date format and clock style
 	def now = formatDate()
@@ -65,15 +68,18 @@ def parse(String description) {
 
 	Map map = [:]
 
-	// Send message data to appropriate parsing function based on the type of report
+	// Handle message data based on the type of report
 	if (cluster == "0006") {
-		// endpoint 01 = left
-		// endpoint 02 = right
-		// endpoint 03 = both
-		def button_no = Integer.parseInt(endpoint)
-		sendEvent(name: "pushed", value: button_no)
+		// Endpoint used for button number: 01 = Left, 02 = Right, 03 = Both
+		map = [
+			name: 'pushed',
+			value: buttonNumber,
+			isStateChange: true,
+			descriptionText: "${pressType[endpoint]} pushed"
+		]
+		sendEvent(name: "lastPressed", value: now)
+		sendEvent(name: "lastPressedDate", value: nowDate)
 	} else if (cluster == "0000" & attrId == "0005") {
-		displayDebugLog "Reset button was short-pressed"
 		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
 	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
 		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
