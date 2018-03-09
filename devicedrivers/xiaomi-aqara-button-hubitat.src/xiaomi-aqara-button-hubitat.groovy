@@ -49,7 +49,7 @@ metadata {
 
 	preferences {
 		//Button Config
-		input "ReleaseTime", "number", title: "Minimum time in seconds for a press to clear (default 2)", description: "", range: "1..60"
+		input "ReleaseTime", "number", title: "Minimum time in seconds for a press to clear (default 2)", description: "", range: "1..60", defaultValue: 2
 		input name: "PressType", type: "enum", options: ["Momentary", "Toggle"], title: "Momentary or toggle? ", defaultValue: "Momentary"
 		//Date & Time Config
 		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
