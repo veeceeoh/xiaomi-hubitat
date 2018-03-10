@@ -38,12 +38,12 @@ metadata {
 	}
 
 	preferences {
+		//Battery Reset Config
+		input name: "voltsmin", type: "decimal", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7, default 2.5)", description: "", range: "2..2.7"
+		input name: "voltsmax", type: "decimal", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4, default 3.0)", description: "", range: "2.8..3.4"
 		//Date & Time Config
 		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
 		input name: "clockformat", type: "bool", title: "Use 24 hour clock", description: "", defaultValue: true
-		//Battery Reset Config
-		input name: "voltsmin", title: "Min Volts (A battery needs replacing at ___ volts, Range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (A battery is at 100% at ___ volts, Range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3.2
 		//Logging
 		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: true
 	}
@@ -109,7 +109,7 @@ private parseBattery(description) {
 
 	def rawVolts = rawValue / 1000
 	def minVolts = voltsmin ? voltsmin : 2.5
-	def maxVolts = voltsmax ? voltsmax : 3.2
+	def maxVolts = voltsmax ? voltsmax : 3.0
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
 	def result = [
@@ -117,7 +117,7 @@ private parseBattery(description) {
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
 	]
 	return result
 }
@@ -136,34 +136,40 @@ private def displayDebugLog(message) {
 
 def init() {
 	sendEvent(name: "numberOfButtons", value: 3)
-	if (!batteryLastReplaced)
+	if (!(device.currentValue("batteryLastReplaced")))
 		resetBatteryReplacedDate(true)
 }
 
 // installed() runs just after a sensor is paired
 def installed() {
-	log.debug "${device.displayName}: installed"
+	displayDebugLog "Installing"
 	init()
 }
 
 // configure() runs after installed() when a sensor is paired or reconnected
 def configure() {
-	log.debug "${device.displayName}: configure"
+	displayDebugLog "Configuring"
 	init()
-
+	displayDebugLog "Number of buttons available to apps = 3"
+	device.updateSetting('debugLogging', false)
 	return
 }
 
 // updated() runs every time user saves preferences
 def updated() {
-	displayDebugLog "updated"
+	voltsmin = voltsmin ?: 2.5
+	voltsmax = voltsmax ?: 3.0
+	voltsmin = (voltsmin > 2.7) ? 2.7 : ((voltsmin < 2.0) ? 2.0 : voltsmin)
+	voltsmax = (voltsmax > 3.4) ? 3.4 : ((voltsmax < 2.8) ? 2.8 : voltsmax)
+	displayDebugLog "Min Volts = ${voltsmin}, Max Volts = ${voltsmax}"
+	displayDebugLog "Updated"
 	init()
 }
 
 // this call is here to avoid Groovy errors when the Push command is used
 // it is empty because the Xioami button is non-controllable
-def push() {
-	displayDebugLog "push"
+def push(value) {
+    displayDebugLog "Push ${value ?:""} command sent - this device cannot receive commands"
 }
 
 def formatDate(batteryReset) {
