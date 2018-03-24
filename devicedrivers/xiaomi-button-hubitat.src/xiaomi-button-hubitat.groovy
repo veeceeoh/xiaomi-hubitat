@@ -1,317 +1,223 @@
 /**
- *  Xiaomi Aqara Zigbee Button (models WXKG11LM and WXKG12LM)
- *  Version 1.2
+ *  Xiaomi "Original" Button
+ *  Device Driver for Hubitat Elevation hub
+ *  Version 0.7b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
  *
- *	    http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  *
- *  Original device handler code by a4refillpad, adapted for use with Aqara model by bspranger
- *  Additional contributions to code by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
- *
- *  Notes on capabilities of the two Aqara models:
- *  Model WXKG11LM
- *    - Only single press is supported, sent as button 1 "pushed" event
- *  Model WXKG11LM:
- *    - Single click results in button 1 "pushed" event
- *    - Hold for longer than 400ms results in button 1 "held" event
- *    - Double click results in button 2 "pushed" event
- *    - Shaking the button results in button 3 "pushed" event
- *    - Single or double click results in custom "lastPressedCoRE" event for webCoRE use
- *    - Release of button results in "lastReleasedCoRE" event for webCoRE use
+ *  Based on SmartThings device handler code by a4refillpad
+ *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
+ *  Reworked and additional code for use with Hubitat Elevation hub by veeceeoh
  *
  *  Known issues:
- *  Xiaomi sensors do not seem to respond to refresh requests
- *  Inconsistent rendering of user interface text/graphics between iOS and Android devices - This is due to SmartThings, not this device handler
- *  Pairing Xiaomi sensors can be difficult as they were not designed to use with a SmartThings hub.
- *
+ *  + Xiaomi devices send reports based on changes, and a status report every 50-60 minutes. These settings cannot be adjusted.
+ *  + The battery level / voltage is not reported at pairing. Wait for the first status report, 50-60 minutes after pairing.
+ *    However, the Aqara Door/Window sensor battery level can be retrieved immediately with a short-press of the reset button.
+ *  + Pairing Xiaomi devices can be difficult as they were not designed to use with a Hubitat hub.
+ *    Holding the sensor's reset button until the LED blinks will start pairing mode.
+ *    3 quick flashes indicates success, while one long flash means pairing has not started yet.
+ *    In either case, keep the sensor "awake" by short-pressing the reset button repeatedly, until recognized by Hubitat.
+ *  + The connection can be dropped without warning. To reconnect, put Hubitat in "Discover Devices" mode, and follow
+ *    the same steps for pairing. As long as it has not been removed from the Hubitat's device list, when the LED
+ *    flashes 3 times, the sensor should be reconnected and will resume reporting as normal
  *
  */
 
 metadata {
-	definition (name: "Xiaomi Aqara Button", namespace: "bspranger", author: "bspranger") {
-		capability "Battery"
+	definition (name: "Xiaomi Button", namespace: "veeceeoh", author: "veeceeoh") {
+		capability "PushableButton"
+		capability "HoldableButton"
 		capability "Sensor"
-		capability "Button"
-		capability "Holdable Button"
-		capability "Actuator"
-		capability "Momentary"
-		capability "Configuration"
-		capability "Health Check"
+		capability "Battery"
 
-		attribute "lastCheckin", "string"
-		attribute "lastCheckinCoRE", "Date"
-		attribute "lastPressed", "string"
-		attribute "lastPressedCoRE", "string"
-		attribute "lastReleased", "string"
-		attribute "lastReleasedCoRE", "string"
-		attribute "lastButtonMssg", "string"
-		attribute "batteryRuntime", "string"
+		attribute "lastCheckin", "String"
+		attribute "lastCheckinDate", "String"
+		attribute "batteryLastReplaced", "String"
+		attribute "buttonPressed", "String"
+		attribute "buttonHeld", "String"
+		attribute "buttonReleased", "String"
 
-		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,FFFF,0006", outClusters: "0000,0004,FFFF", manufacturer: "LUMI", model: "lumi.sensor_switch.aq2", deviceJoinName: "Aqara Button Model WXKG11LM"
-		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,0001,0006,0012", outClusters: "0000", manufacturer: "LUMI", model: "lumi.sensor_switch.aq3", deviceJoinName: "Aqara Button Model WXKG12LM"
+		// this fingerprint is identical to the one for Xiaomi "Original" Door/Window Sensor except for model name
+		fingerprint endpointId: "01", profileId: "0104", deviceId: "0104", inClusters: "0000,0003,FFFF,0019", outClusters: "0000,0004,0003,0006,0008,0005,0019", manufacturer: "LUMI", model: "lumi.sensor_switch"
 
-		command "resetBatteryRuntime"
-	}
-
-	simulator {
-		status "Press button": "on/off: 0"
-		status "Release button": "on/off: 1"
-	}
-
-	tiles(scale: 2) {
-		multiAttributeTile(name:"button", type: "lighting", width: 6, height: 4, canChangeIcon: true) {
-			tileAttribute ("device.button", key: "PRIMARY_CONTROL") {
-				attributeState("pushed", label:'Pushed', action: "momentary.push", backgroundColor:"#00a0dc")
-				attributeState("held", label:'Held', backgroundColor:"#00a0dc")
-			}
-			tileAttribute("device.lastpressed", key: "SECONDARY_CONTROL") {
-				attributeState "default", label:'Last Pressed: ${currentValue}'
-			}
-		}
-		valueTile("battery", "device.battery", decoration: "flat", inactiveLabel: false, width: 2, height: 2) {
-			state "battery", label:'${currentValue}%', unit:"%", icon:"https://raw.githubusercontent.com/bspranger/Xiaomi/master/images/XiaomiBattery.png",
-			backgroundColors:[
-				[value: 10, color: "#bc2323"],
-				[value: 26, color: "#f1d801"],
-				[value: 51, color: "#44b621"]
-			]
-		}
-		valueTile("lastcheckin", "device.lastCheckin", decoration: "flat", inactiveLabel: false, width: 4, height: 1) {
-			state "default", label:'Last Event:\n${currentValue}'
-		}
-		valueTile("batteryRuntime", "device.batteryRuntime", inactiveLabel: false, decoration: "flat", width: 4, height: 1) {
-			state "batteryRuntime", label:'Battery Changed: ${currentValue}'
-		}
-		main (["button"])
-		details(["button","battery","lastcheckin","batteryRuntime"])
+		command "resetBatteryReplacedDate"
 	}
 
 	preferences {
+		//Button Config
+		input "waittoHeld", "number", title: "Hold button for __ seconds to set button 1 'held' state (default = 1).", description: "", range: "1..60"
 		//Date & Time Config
-		input description: "", type: "paragraph", element: "paragraph", title: "DATE & CLOCK"
-		input name: "dateformat", type: "enum", title: "Set Date Format\n US (MDY) - UK (DMY) - Other (YMD)", description: "Date Format", options:["US","UK","Other"]
-		input name: "clockformat", type: "bool", title: "Use 24 hour clock?"
+		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
+		input name: "clockformat", type: "bool", title: "Use 24 hour clock", description: ""
 		//Battery Reset Config
-		input description: "If you have installed a new battery, the toggle below will reset the Changed Battery date to help remember when it was changed.", type: "paragraph", element: "paragraph", title: "CHANGED BATTERY DATE RESET"
-		input name: "battReset", type: "bool", title: "Battery Changed?"
-		//Advanced Settings
-		input description: "Only change the settings below if you know what you're doing.", type: "paragraph", element: "paragraph", title: "ADVANCED SETTINGS"
-		//Battery Voltage Range
-		input description: "", type: "paragraph", element: "paragraph", title: "BATTERY VOLTAGE RANGE"
-		input name: "voltsmax", type: "decimal", title: "Max Volts\nA battery is at 100% at __ volts\nRange 2.8 to 3.4", range: "2.8..3.4", defaultValue: 3, required: false
-		input name: "voltsmin", type: "decimal", title: "Min Volts\nA battery is at 0% (needs replacing) at __ volts\nRange 2.0 to 2.7", range: "2..2.7", defaultValue: 2.5, required: false
-		//Live Logging Message Display Config
-		input description: "These settings affect the display of messages in the Live Logging tab of the SmartThings IDE.", type: "paragraph", element: "paragraph", title: "LIVE LOGGING"
-		input name: "infoLogging", type: "bool", title: "Display info log messages?", defaultValue: true
-		input name: "debugLogging", type: "bool", title: "Display debug log messages?"
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		//Debug logging Config
+		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: false
 	}
-}
-
-//adds functionality to press the centre tile as a virtualApp Button
-def push() {
-	displayInfoLog(": Virtual App Button Pressed")
-	sendEvent(name: "lastPressed", value: formatDate(), displayed: false)
-	sendEvent(name: "lastPressedCoRE", value: now(), displayed: false)
-	sendEvent(name: "button", value: "pushed", data: [buttonNumber: 1], descriptionText: "$device.displayName app button was pushed", isStateChange: true)
-	sendEvent(name: "lastReleased", value: formatDate(), displayed: false)
-	sendEvent(name: "lastReleasedCoRE", value: now(), displayed: false)
 }
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-	displayDebugLog(": Parsing '${description}'")
-	def result = [:]
+	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
+	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
+	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
+	displayDebugLog("Parsing description: ${description}")
 
-	// Any report - button press & Battery - results in a lastCheckin event and update to Last Checkin tile
-	sendEvent(name: "lastCheckin", value: formatDate(), displayed: false)
-	sendEvent(name: "lastCheckinCoRE", value: now(), displayed: false)
+	// Determine current time and date in the user-selected date format and clock style
+	def now = formatDate()
+	def nowDate = new Date(now).getTime()
+
+	// lastCheckin and lastPressedDate can be used to determine if the sensor is "awake" and connected
+	sendEvent(name: "lastCheckin", value: now)
+	sendEvent(name: "lastCheckinDate", value: nowDate)
+
+	Map map = [:]
 
 	// Send message data to appropriate parsing function based on the type of report
-	if (description?.startsWith('on/off: ')) {
-		// Model WXKG11LM only - button press generates pushed event
-		updateLastPressed("pressed")
-		result = buttonEventMap(0)
-	} else if (description?.startsWith("read attr - raw: ")) {
-		// Parse any model WXKG12LM button messages, or messages on short-press of reset button
-		result = parseReadAttrMessage(description)
-	} else if (description?.startsWith('catchall:')) {
-		// Parse battery level from regular hourly announcement messages
-		result = parseCatchAllMessage(description)
+	if (cluster == "0006") {
+		map = parseButtonMessage(Integer.parseInt(valueHex))
+	} else if (cluster == "0000" & attrId == "0005") {
+		displayDebugLog("Reset button was short-pressed")
+		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
+	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
+		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
+	} else if (!(cluster == "0000" & attrId == "0001")) {
+		displayDebugLog("Unable to parse ${description}")
 	}
-	if (result != null) {
-		displayDebugLog(": Creating event $result")
-		return createEvent(result)
+
+	if (map) {
+		displayDebugLog(map.descriptionText)
+		return createEvent(map)
 	} else
 		return [:]
 }
 
-private Map parseReadAttrMessage(String description) {
-	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
-	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
-	def value = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	Map resultMap = [:]
-
-	// Process model WXKG12LM button message
-	if (cluster == "0012") {
-		// Values (as integer): 1 = push, 2 = double-click, 11 = hold, 12 = release, 13 = shake
-		value = Integer.parseInt(value[2..3])
-		// Change values 16-18 to 3-5 to use as list for buttonEventMap function
-		value = (value < 3) ? value : (value - 7)
-		resultMap = mapButtonEvent(value)
-	}
-
-	// Process message on short-button press containing model name and battery voltage report
-	if (cluster == "0000" && attrId == "0005")	{
-		def model = value.split("01FF")[0]
-		def data = value.split("01FF")[1]
-		def modelName = ""
-		// Parsing the model name
-		for (int i = 0; i < model.length(); i+=2) {
-			def str = model.substring(i, i+2);
-			def NextChar = (char)Integer.parseInt(str, 16);
-			modelName = modelName + NextChar
-		}
-		displayDebugLog(" reported: cluster: 0000, attrId: 0005, value: ${value}, model:${modelName}, data:${data}")
-
-		if (data[4..7] == "0121") {
-			def BatteryVoltage = (Integer.parseInt((data[10..11] + data[8..9]),16))
-				resultMap = getBatteryResult(BatteryVoltage)
-		}
-	}
-
-	return resultMap
-}
-
-// Create map of values to be used for button event
-private mapButtonEvent(value) {
-	def messageType = ["pushed", "single-clicked", "double-clicked", "held", "", "shaken"]
-	def eventType = ["pushed", "pushed", "pushed", "held", "", "pushed"]
-	def buttonNum = [1, 1, 2, 1, 0, 3]
-	if (value == 4) {
-		displayInfoLog(" was released")
-		updateLastPressed("Released")
-	} else {
-		displayInfoLog(" was ${messageType[value]} (Button ${buttonNum[value]} ${eventType[value]})")
-		updateLastPressed("Pressed")
+// Parse button message (press, double-click, triple-click, quad-click, and release)
+private parseButtonMessage(attrValue) {
+	def clickType = ["", "single", "double", "triple", "quadruple", "shizzle"]
+    def coreType = (attrValue == 1) ? "Released" : "Pressed"
+	attrValue = (attrValue < 5) ? attrValue : 5
+	displayDebugLog("Attribute value = ${attrValue}, Click type = ${clickType[attrValue]}")
+	// Generate buttonPressed or buttonReleased event for webCoRE use
+    sendEvent(name: "button${coreType}", value: new Date(formatDate()).getTime(), descriptionText: "button${coreType} (webCoRE)")
+	displayDebugLog("Button was ${coreType} (webCoRE)")
+	// On single-press start heldState countdown but do not generate event
+	if (attrValue == 0) {
+		runIn((waittoHeld ?: 1), heldState)
+		state.countdownActive = true
+	// On multi-click or release when countdown active generate a pushed event
+	} else if (state.countdownActive == true || attrValue > 1) {
+		state.countdownActive = false
 		return [
-			name: 'button',
-			value: eventType[value],
-			data: [buttonNumber: buttonNum[value]],
-			descriptionText: "$device.displayName ${messageType[value]}",
-			isStateChange: true
+			name: 'pushed',
+			value: attrValue,
+			isStateChange: true,
+			descriptionText: "Button ${attrValue} was pushed (${clickType[attrValue]}-click)"
 		]
 	}
+	return [:]
 }
 
-// on any type of button pressed update lastPressed or lastReleased to current date/time
-def updateLastPressed(pressType) {
-	displayInfoLog(": Setting Last $pressType to current date/time")
-	sendEvent(name: "last${pressType}", value: formatDate(), displayed: false)
-	sendEvent(name: "last${pressType}CoRE", value: now(), displayed: false)
-}
-
-// Check catchall for battery voltage data to pass to getBatteryResult for conversion to percentage report
-private Map parseCatchAllMessage(String description) {
-	Map resultMap = [:]
-	def catchall = zigbee.parse(description)
-
-	if (catchall.clusterId == 0x0000) {
-		def MsgLength = catchall.data.size()
-		// Xiaomi CatchAll does not have identifiers, first UINT16 is Battery
-		if ((catchall.data.get(0) == 0x01 || catchall.data.get(0) == 0x02) && (catchall.data.get(1) == 0xFF)) {
-			for (int i = 4; i < (MsgLength-3); i++) {
-				if (catchall.data.get(i) == 0x21) { // check the data ID and data type
-					// next two bytes are the battery voltage
-					resultMap = getBatteryResult((catchall.data.get(i+2)<<8) + catchall.data.get(i+1))
-					break
-				}
-			}
-		}
+//set held state if button has not yet been released after single-press
+def heldState() {
+	def descText = "Button 1 was held"
+	if (state.countdownActive == true) {
+		state.countdownActive = false
+		sendEvent(
+			name: 'held',
+			value: 1,
+			isStateChange: true,
+			descriptionText: "${device.displayName}: ${descText}"
+		)
+	displayDebugLog(descText)
+	sendEvent(name: "buttonHeld", value: new Date(formatDate()).getTime(), descriptionText: "buttonHeld (webCoRE)")
 	}
-	return resultMap
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
-private Map getBatteryResult(rawValue) {
-	// raw voltage is normally supplied as a 4 digit integer that needs to be divided by 1000
-	// but in the case the final zero is dropped then divide by 100 to get actual voltage value
+private parseBattery(description) {
+	displayDebugLog("${device.displayName}: Battery parse string = ${description}")
+	def MsgLength = description.size()
+	def rawValue
+	for (int i = 4; i < (MsgLength-3); i+=2) {
+		if (description[i..(i+1)] == "21") { // Search for byte preceeding battery voltage bytes
+			rawValue = Integer.parseInt((description[(i+4)..(i+5)] + description[(i+2)..(i+3)]),16)
+			break
+		}
+	}
 	def rawVolts = rawValue / 1000
 	def minVolts = voltsmin ? voltsmin : 2.5
 	def maxVolts = voltsmax ? voltsmax : 3.0
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
-	def descText = "Battery at ${roundedPct}% (${rawVolts} Volts)"
-	displayInfoLog(": $descText")
-	return [
+	def result = [
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
-		isStateChange:true,
-		descriptionText : "$device.displayName $descText"
+		isStateChange: true,
+		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
 	]
+	return result
+}
+
+//Reset the batteryLastReplaced date to current date
+def resetBatteryReplacedDate(paired) {
+	def now = formatDate(true)
+	def logText = "Setting Battery Last Replaced to current date"
+	sendEvent(name: "batteryLastReplaced", value: now)
+	if (paired)
+		log.debug "${logText} for newly paired sensor"
+	displayDebugLog(logText)
 }
 
 private def displayDebugLog(message) {
-	if (debugLogging)
-		log.debug "${device.displayName}${message}"
+	if (debugLogging) log.debug "${device.displayName}: ${message}"
 }
 
-private def displayInfoLog(message) {
-	if (infoLogging)
-		log.info "${device.displayName}${message}"
+// this call is here to avoid Groovy errors when the Push command is used
+// it is empty because the Xioami button is non-controllable
+def push() {
+	displayDebugLog("Fo' shizzle this button can't be controlled!")
 }
 
-//Reset the date displayed in Battery Changed tile to current date
-def resetBatteryRuntime(paired) {
-	def newlyPaired = paired ? " for newly paired sensor" : ""
-	sendEvent(name: "batteryRuntime", value: formatDate(true))
-	displayInfoLog(": Setting Battery Changed to current date${newlyPaired}")
+// this call is here to avoid Groovy errors when the Hold command is used
+// it is empty because the Xioami button is non-controllable
+def hold() {
+	displayDebugLog("Fo' shizzle this button can't be controlled!")
 }
 
-// installed() runs just after a sensor is paired using the "Add a Thing" method in the SmartThings mobile app
+// installed() runs just after a sensor is paired
 def installed() {
-	displayInfoLog(": Installing")
-	if (!batteryRuntime)
-		resetBatteryRuntime(true)
-	checkIntervalEvent("")
-	sendEvent(name: "numberOfButtons", value: 3)
+	log.debug "${device.displayName}: Installing"
+	sendEvent(name: "numberOfButtons", value: 5)
+	state.countdownActive = false
+	if (!batteryLastReplaced)
+		resetBatteryReplacedDate(true)
 }
 
-// configure() runs after installed() when a sensor is paired
+// configure() runs after installed() when a sensor is paired or reconnected
 def configure() {
-	displayInfoLog(": Configuring")
-	if (!batteryRuntime)
-		resetBatteryRuntime(true)
-	checkIntervalEvent("configured")
-	sendEvent(name: "numberOfButtons", value: 3)
-	displayInfoLog(": Number of buttons = 3")
+	log.debug "${device.displayName}: Configuring"
+	sendEvent(name: "numberOfButtons", value: 5)
+	log.debug "${device.displayName}: Number of buttons = 5"
+	state.countdownActive = false
 	return
 }
 
-// updated() will run twice every time user presses save in preference settings page
+// updated() runs every time user saves preferences
 def updated() {
-	displayInfoLog(": Updating preference settings")
-	if (battReset){
-		resetBatteryRuntime()
-		device.updateSetting("battReset", false)
-	}
-	checkIntervalEvent("preferences updated")
-	displayInfoLog(": Info message logging enabled")
-	displayDebugLog(": Debug message logging enabled")
-}
-
-private checkIntervalEvent(text) {
-	// Device wakes up every 1 hours, this interval allows us to miss one wakeup notification before marking offline
-	if (text)
-		displayInfoLog(": Set health checkInterval when ${text}")
-	sendEvent(name: "checkInterval", value: 2 * 60 * 60 + 2 * 60, displayed: false, data: [protocol: "zigbee", hubHardwareId: device.hub.hardwareID])
+	displayDebugLog("Updating preference settings")
+	sendEvent(name: "numberOfButtons", value: 5)
+	state.countdownActive = false
 }
 
 def formatDate(batteryReset) {
@@ -321,12 +227,13 @@ def formatDate(batteryReset) {
 	// If user's hub timezone is not set, display error messages in log and events log, and set timezone to GMT to avoid errors
 	if (!(location.timeZone)) {
 		correctedTimezone = TimeZone.getTimeZone("GMT")
-		log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your location in the SmartThings mobile app."
-		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your location in the SmartThings mobile app.")
+		log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your Hubitat hub location."
+		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your Hubitat hub location.")
 	}
 	else {
 		correctedTimezone = location.timeZone
 	}
+
 	if (dateformat == "US" || dateformat == "" || dateformat == null) {
 		if (batteryReset)
 			return new Date().format("MMM dd yyyy", correctedTimezone)
