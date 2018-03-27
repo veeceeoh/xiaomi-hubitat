@@ -155,11 +155,10 @@ private parse12LMMessage(value) {
 	displayInfoLog("Button was ${messageType[value]} (Button ${buttonNum[value]} $eventType)")
 	updateCoREEvent(coreType)
 	return [
-		name: 'button',
-		value: eventType,
-		data: [buttonNumber: buttonNum[value]],
-		descriptionText: "Button was ${messageType[value]}",
-		isStateChange: true
+		name: 'pushed',
+		value: buttonNum[value],
+		isStateChange: true,
+		descriptionText: "Button was ${messageType[value]}"
 	]
 }
 
