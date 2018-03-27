@@ -67,8 +67,9 @@ metadata {
 		//Button Config
 		input "releaseTime", "number", title: "MODEL WXKG11LM ONLY: Delay after a single press to send 'release' (button 0 pushed) event (default 2 seconds)", description: "", range: "1..60"
 		//Battery Voltage Range
-		input name: "voltsmin", title: "Min Volts (A battery needs replacing at ___ volts, Range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (A battery is at 100% at ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: "", defaultValue: true
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 	}
