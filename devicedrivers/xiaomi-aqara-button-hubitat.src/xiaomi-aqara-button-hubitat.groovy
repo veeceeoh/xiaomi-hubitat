@@ -243,7 +243,7 @@ def configure() {
 	displayInfoLog("Configuring")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
-	sendEvent(name: "numberOfButtons", value: 3)
+	sendEvent(name: "numberOfButtons", value: 4)
 	displayInfoLog("Number of buttons = 4 (model WXKG12LM only uses buttons 1-3)")
 	state.prefsSetCount = 1
 	return
@@ -254,7 +254,7 @@ def updated() {
 	displayInfoLog("Updating preference settings")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
-	sendEvent(name: "numberOfButtons", value: 3)
+	sendEvent(name: "numberOfButtons", value: 4)
 	displayInfoLog("Info message logging enabled")
 	displayDebugLog("Debug message logging enabled")
 }
