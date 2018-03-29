@@ -235,7 +235,7 @@ def hold() {
 def installed() {
 	state.prefsSetCount = 0
 	displayInfoLog("Installing")
-	sendEvent(name: "numberOfButtons", value: 4)
+	sendEvent(name: "numberOfButtons", value: 3)
 }
 
 // configure() runs after installed() when a sensor is paired or reconnected
@@ -243,7 +243,8 @@ def configure() {
 	displayInfoLog("Configuring")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
-	sendEvent(name: "numberOfButtons", value: 4)
+	sendEvent(name: "numberOfButtons", value: 3)
+	displayInfoLog("Number of buttons = 3")
 	state.prefsSetCount = 1
 	return
 }
@@ -253,6 +254,7 @@ def updated() {
 	displayInfoLog("Updating preference settings")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
+	sendEvent(name: "numberOfButtons", value: 3)
 	displayInfoLog("Info message logging enabled")
 	displayDebugLog("Debug message logging enabled")
 }
