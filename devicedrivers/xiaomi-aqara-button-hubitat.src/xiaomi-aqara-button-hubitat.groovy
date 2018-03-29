@@ -235,7 +235,7 @@ def hold() {
 def installed() {
 	state.prefsSetCount = 0
 	displayInfoLog("Installing")
-	sendEvent(name: "numberOfButtons", value: 3)
+	sendEvent(name: "numberOfButtons", value: 4)
 }
 
 // configure() runs after installed() when a sensor is paired or reconnected
@@ -244,7 +244,7 @@ def configure() {
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
 	sendEvent(name: "numberOfButtons", value: 3)
-	displayInfoLog("Number of buttons = 3")
+	displayInfoLog("Number of buttons = 4 (model WXKG12LM only uses buttons 1-3)")
 	state.prefsSetCount = 1
 	return
 }
