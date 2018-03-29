@@ -52,12 +52,12 @@ metadata {
 
 	preferences {
 		//Button Config
-		input "waittoHeld", "number", title: "Hold button for __ seconds to set button 1 'held' state (default = 1).", description: "", range: "1..60"
+		input "waittoHeld", "number", title: "Hold button for ___ seconds to set button 1 'held' state", description: "Default = 1 second", range: "1..60"
 		//Battery Reset Config
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4"
 		//Logging Message Config
-		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: "", defaultValue: true
+		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 	}
 }
@@ -67,7 +67,6 @@ def parse(String description) {
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	displayDebugLog("Parsing description: ${description}")
 	Map map = [:]
 
 	// lastCheckin can be used with webCoRE
@@ -126,7 +125,7 @@ private parseButtonMessage(attrValue) {
 //set held state if button has not yet been released after single-press
 def heldState() {
 	displayDebugLog("heldState countdown finished, checking whether 'held' event should be generated")
-	def descText = "Button was held"
+	def descText = "Button was held (Button 1 held)"
 	if (state.countdownActive == true) {
 		state.countdownActive = false
 		sendEvent(
@@ -135,7 +134,7 @@ def heldState() {
 			isStateChange: true,
 			descriptionText: descText
 		)
-		displayInfoLog("$descText (Button 1 held)")
+		displayInfoLog(descText)
 		updateCoREEvent("Held")
 	}
 }
@@ -206,8 +205,6 @@ def hold() {
 def installed() {
 	state.prefsSetCount = 0
 	displayInfoLog("Installing")
-	if (!device.currentState('batteryLastReplaced')?.value)
-		resetBatteryReplacedDate(true)
 	sendEvent(name: "numberOfButtons", value: 5)
 	state.countdownActive = false
 }
@@ -218,18 +215,19 @@ def configure() {
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
 	sendEvent(name: "numberOfButtons", value: 5)
+	displayInfoLog("Number of buttons = 5")
 	state.countdownActive = false
+	state.prefsSetCount = 1
 	return
 }
 
 // updated() runs every time user saves preferences
 def updated() {
-	displayInfoLog(": Updating preference settings")
-	state.prefsSetCount = 1
+	displayInfoLog("Updating preference settings")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
 	sendEvent(name: "numberOfButtons", value: 5)
-	displayInfoLog(": Info message logging enabled")
-	displayDebugLog(": Debug message logging enabled")
+	displayInfoLog("Info message logging enabled")
+	displayDebugLog("Debug message logging enabled")
 	state.countdownActive = false
 }
