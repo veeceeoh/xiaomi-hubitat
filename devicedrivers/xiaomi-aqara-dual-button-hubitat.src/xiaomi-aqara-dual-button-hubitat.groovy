@@ -16,7 +16,7 @@
  *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
  *
  *
- * https://xiaomi-mi.com/sockets-and-sensors/xiaomi-aqara-smart-light-control-set/
+ *  https://xiaomi-mi.com/sockets-and-sensors/xiaomi-aqara-smart-light-control-set
  */
 
 metadata {
@@ -108,7 +108,7 @@ private parseBattery(description) {
 	}
 	def rawVolts = rawValue / 1000
 	def minVolts = voltsmin ? voltsmin : 2.5
-	def maxVolts = voltsmax ? voltsmax : 3.2
+	def maxVolts = voltsmax ? voltsmax : 3.0
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
 	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
