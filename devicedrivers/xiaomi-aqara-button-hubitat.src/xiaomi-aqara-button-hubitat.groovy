@@ -65,7 +65,7 @@ metadata {
 
 	preferences {
 		//Button Config
-		input "releaseTime", "number", title: "MODEL WXKG11LM ONLY: Delay after a single press to send 'release' (button 0 pushed) event", description: "Default = 2.0 seconds", range: "1..60"
+		input "releaseTime", "number", title: "MODEL WXKG11LM ONLY: Delay after a single press to send 'release' (button 0 pushed) event", description: "Default = 2 seconds", range: "1..60"
 		//Battery Voltage Range
 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", description: "Default = 2.5 Volts", type: "decimal", range: "2..2.7"
 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", description: "Default = 3.0 Volts", type: "decimal", range: "2.8..3.4"
@@ -115,7 +115,7 @@ def parse(String description) {
 // Parse WXKG11LM button message (press, double-click, triple-click, quad-click, and release)
 private parse11LMMessage(attrId, value){
 	def result = [:]
-	releaseTime = releaseTime ? releaseTime : 2
+	releaseTime = (releaseTime > 0) ? releaseTime : 2
 
 	if ((attrId == "0000") && (value == 1001 || value == 1000)) {
 		result = map11LMEvent(1)
