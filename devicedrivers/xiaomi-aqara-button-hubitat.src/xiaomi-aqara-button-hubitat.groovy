@@ -58,19 +58,19 @@ metadata {
 		// Aqara Button - original revision - model WXKG11LM
 		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,FFFF,0006", outClusters: "0000,0004,FFFF", manufacturer: "LUMI", model: "lumi.sensor_switch.aq2"
 		// Aqara Button - new revision - model WXKG12LM
-		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,0001,0006,0012", outClusters: "0000", manufacturer: "LUMI", model: "lumi.sensor_switch.aq3", deviceJoinName: "Aqara Button WXKG12LM"
+		fingerprint endpointId: "01", profileId: "0104", inClusters: "0000,0012,0006,0001", outClusters: "0000", manufacturer: "LUMI", model: "lumi.sensor_switch.aq3"
 
 		command "resetBatteryReplacedDate"
 	}
 
 	preferences {
 		//Button Config
-		input "releaseTime", "number", title: "MODEL WXKG11LM ONLY: Delay after a single press to send 'release' (button 0 pushed) event (default 2 seconds)", description: "", range: "1..60"
+		input "releaseTime", "number", title: "MODEL WXKG11LM ONLY: Delay after a single press to send 'release' (button 0 pushed) event", description: "Default = 2.0 seconds", range: "1..60"
 		//Battery Voltage Range
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", description: "Default = 2.5 Volts", type: "decimal", range: "2..2.7"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", description: "Default = 3.0 Volts", type: "decimal", range: "2.8..3.4"
 		//Logging Message Config
-		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: "", defaultValue: true
+		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 	}
 }
@@ -153,9 +153,9 @@ private parse12LMMessage(value) {
 	def coreType = ["", "Pressed", "Pressed", "Held", "Released", "Pressed"]
 	def buttonNum = [1, 1, 2, 1, 0, 3]
 	displayInfoLog("Button was ${messageType[value]} (Button ${buttonNum[value]} $eventType)")
-	updateCoREEvent(coreType)
+	updateCoREEvent(coreType[value])
 	return [
-		name: 'pushed',
+		name: eventType,
 		value: buttonNum[value],
 		isStateChange: true,
 		descriptionText: "Button was ${messageType[value]}"
@@ -235,8 +235,6 @@ def hold() {
 def installed() {
 	state.prefsSetCount = 0
 	displayInfoLog("Installing")
-	if (!device.currentState('batteryLastReplaced')?.value)
-		resetBatteryReplacedDate(true)
 	sendEvent(name: "numberOfButtons", value: 4)
 }
 
@@ -246,15 +244,15 @@ def configure() {
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
 	sendEvent(name: "numberOfButtons", value: 4)
+	state.prefsSetCount = 1
 	return
 }
 
 // updated() runs every time user saves preferences
 def updated() {
-	displayInfoLog(": Updating preference settings")
-	state.prefsSetCount = 1
+	displayInfoLog("Updating preference settings")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
-	displayInfoLog(": Info message logging enabled")
-	displayDebugLog(": Debug message logging enabled")
+	displayInfoLog("Info message logging enabled")
+	displayDebugLog("Debug message logging enabled")
 }
