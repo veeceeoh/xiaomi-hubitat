@@ -185,7 +185,6 @@ def resetBatteryReplacedDate(paired) {
 	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
 }
 
-
 // installed() runs just after a sensor is paired
 def installed() {
 	state.prefsSetCount = 0
