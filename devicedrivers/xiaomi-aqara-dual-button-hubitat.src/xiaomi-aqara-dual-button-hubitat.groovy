@@ -30,7 +30,6 @@ metadata {
 		attribute "buttonPressed", "String"
 
 		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw2Un"
-//		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw2Un"
 
 		command "resetBatteryReplacedDate"
 	}
@@ -149,7 +148,6 @@ def push() {
 def installed() {
 	state.prefsSetCount = 0
 	displayInfoLog("Installing")
-	sendEvent(name: "numberOfButtons", value: 3)
 }
 
 // configure() runs after installed() when a sensor is paired or reconnected
