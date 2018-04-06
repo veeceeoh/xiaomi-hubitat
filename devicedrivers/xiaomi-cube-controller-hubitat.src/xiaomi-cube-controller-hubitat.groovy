@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Mi Cube Controller - model MFKZQ01LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.1b
+ *  Version 0.2b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -33,7 +33,7 @@
 metadata {
 	definition (name: "Xiaomi Mi Cube Controller", namespace: "veeceeoh", author: "veeceeoh") {
 		capability "Actuator"
-		capability "Button"
+		capability "PushableButton"
 		capability "Configuration"
 		capability "Battery"
 		capability "Three Axis" //Simulated!
@@ -42,8 +42,10 @@ metadata {
 		attribute "face", "number"
 		attribute "angle", "number"
 		attribute "lastCheckin", "String"
-		attribute "lastCheckinDate", "String"
 		attribute "batteryLastReplaced", "String"
+		attribute "buttonPressed", "String"
+		attribute "buttonHeld", "String"
+		attribute "buttonReleased", "String"
 
 		// Fingerprint data taken from ZiGate webpage http://zigate.fr/xiaomi-magic-cube-cluster
 		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000, 0003, 0012, 0019", outClusters: "0000, 0003, 0012, 0019", manufacturer: "LUMI", model: "lumi.sensor_cube"
@@ -73,13 +75,11 @@ metadata {
 
 	preferences {
 		input (name: "cubeMode", title: "Cube Mode: Select how many buttons to control", description: "", type: "enum", options: [0: "Simple - 7 buttons", 1: "Advanced - 36 buttons", 2: "Combined - 43 buttons"])
-		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
-		input name: "clockformat", type: "bool", title: "Use 24 hour clock", description: ""
-		//Battery Reset Config
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
-		//Debug logging Config
-		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: false
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", description: "Default = 2.5 Volts", type: "decimal", range: "2..2.7"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", description: "Default = 3.0 Volts", type: "decimal", range: "2.8..3.4"
+		//Logging Message Config
+		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
+		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 	}
 }
 
@@ -120,27 +120,25 @@ def parse(String description) {
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	displayDebugLog("Parsing description: ${description}")
-
-	// Determine current time and date in the user-selected date format and clock style
-	def now = formatDate()
-	def nowDate = new Date(now).getTime()
-
-	// lastCheckin and lastPressedDate can be used to determine if the sensor is "awake" and connected
-	sendEvent(name: "lastCheckin", value: now)
-	sendEvent(name: "lastCheckinDate", value: nowDate)
-
 	Map map = [:]
+
+	// lastCheckin can be used with webCoRE
+	sendEvent(name: "lastCheckin", value: now())
+
+	displayDebugLog("Parsing message: ${description}")
 
 	// Send message data to appropriate parsing function based on the type of report
 	if (cluster == "0006") {
 		map = parseButtonMessage(Integer.parseInt(valueHex))
 	} else if (cluster == "0000" & attrId == "0005") {
-		displayDebugLog("Reset button was short-pressed")
+		displayInfoLog("Reset button was short-pressed")
+		// Parse battery level from longer type of announcement message
 		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
 	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
+		// Parse battery level from hourly announcement message
 		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
 	} else if (!(cluster == "0000" & attrId == "0001")) {
-		displayDebugLog("Unable to parse ${description}")
+		displayDebugLog("Unable to parse message")
 	}
 
 	if (description?.startsWith('catchall:')) {
@@ -150,8 +148,8 @@ def parse(String description) {
 		parseReportAttributeMessage(description)
 	}
 
-	if (map) {
-		displayDebugLog(map.descriptionText)
+	if (map != [:]) {
+		displayDebugLog("Creating event $map")
 		return createEvent(map)
 	} else
 		return [:]
@@ -159,7 +157,7 @@ def parse(String description) {
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
-	displayDebugLog("${device.displayName}: Battery parse string = ${description}")
+	displayDebugLog("Battery parse string = ${description}")
 	def MsgLength = description.size()
 	def rawValue
 	for (int i = 4; i < (MsgLength-3); i+=2) {
@@ -173,12 +171,14 @@ private parseBattery(description) {
 	def maxVolts = voltsmax ? voltsmax : 3.0
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
+	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
+	displayInfoLog(descText)
 	def result = [
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "${device.displayName}: Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: descText
 	]
 	return result
 }
@@ -189,21 +189,17 @@ private Map parseReportAttributeMessage(String description) {
 		def nameAndValue = param.split(":")
 		map += [(nameAndValue[0].trim()):nameAndValue[1].trim()]
 	}
-	log.debug "Cluster: ${descMap.cluster}, Attribute ID: ${descMap.attrId}, Value: ${descMap.value}"
+	displayDebugLog("Cluster: ${descMap.cluster}, Attribute ID: ${descMap.attrId}, Value: ${descMap.value}")
 	if (descMap.cluster == "0012" && descMap.attrId == "0055") { // Shake, flip, knock, slide
-		log.debug "Shake, flip, knock, or slide detected"
+		displayInfoLog("Shake, flip, knock, or slide detected")
 		getMotionResult(descMap.value)
 	} else if (descMap.cluster == "000C" && descMap.attrId == "ff05") { // Rotation (90 and 180 degrees)
-		log.debug "Rotation detected"
+		displayInfoLog("Rotation detected")
 		getRotationResult(descMap.value)
 	} else {
-		log.debug "Unknown event - Cluster: ${descMap.cluster}, Attribute ID: ${descMap.attrId}, Value: ${descMap.value}"
+		displayDebugLog("Unknown Cluster / Attribute ID")
 	}
 }
-
-// def String hexToBinOld(String thisByte) {
-// 	return String.format("%8s", Integer.toBinaryString(Integer.parseInt(thisByte,16))).replace(' ', '0')
-// }
 
 def String hexToBin(String thisByte, Integer size = 8) {
 	String binaryValue = new BigInteger(thisByte, 16).toString(2);
@@ -243,21 +239,19 @@ private Map getRotationResult(value) {
 def Map shakeEvents() {
 	if (!settings.cubeMode || settings.cubeMode in ['0','2'] ) {
 		sendEvent([
-			name: "button",
-			value: "pushed",
-			data: [buttonNumber: 1, face: device.currentValue("face")],
+			name: "pushed",
+			value: 1,
+			data: [face: device.currentValue("face")],
 			descriptionText: (settings.cubeMode == '0') ? "$device.displayName was shaken" : null,
 			isStateChange: true,
-			displayed: (settings.cubeMode == '0') ? true : false
 		])
 	}
 
 	if (settings.cubeMode in ['1','2'] ){
 		sendEvent([
-			name: "button",
-			value: "pushed",
-			data: [buttonNumber: (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 31 : 38),
-			face: device.currentValue("face")],
+			name: "pushed",
+			value: (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 31 : 38),
+			data: [face: device.currentValue("face")],
 			descriptionText: "$device.displayName was shaken (Face # ${device.currentValue("face")}).",
 			isStateChange: true])
 	}
@@ -270,32 +264,30 @@ def flipEvents(Integer faceId, String flipType) {
 	} else if (flipType == "90") {
 		if (settings.cubeMode in ['0','2']) {
 			sendEvent( [
-				name: 'button',
-				value: "pushed" ,
-				data: [buttonNumber: 2, face: faceId],
+				name: "pushed",
+				value: 2 ,
+				data: [face: faceId],
 				descriptionText: (settings.cubeMode == '0') ? "$device.displayName detected $flipType degree flip" : null,
 				isStateChange: true,
-				displayed: (settings.cubeMode == '0') ? true : false
 			] )
 		}
 	} else if (flipType == "180") {
 		if (settings.cubeMode in ['0','2']) {
 			sendEvent( [
-				name: 'button',
-				value: "pushed" ,
-				data: [buttonNumber: 3, face: faceId],
+				name: "pushed",
+				value: 3 ,
+				data: [face: faceId],
 				descriptionText: (settings.cubeMode == '0') ? "$device.displayName detected $flipType degree flip" : null,
 				isStateChange: true,
-				displayed: (settings.cubeMode == '0') ? true : false
 			] )
 		}
 	}
 	sendEvent( [name: 'face', value: faceId, isStateChange: true, displayed: false ] )
 	if (settings.cubeMode in ['1','2']) {
 		sendEvent( [
-			name: "button",
-			value: "pushed",
-			data: [buttonNumber: faceId+((settings.cubeMode == '1') ? 1 : 8), face: faceId],
+			name: "pushed",
+			value: faceId+((settings.cubeMode == '1') ? 1 : 8),
+			data: [face: faceId],
 			descriptionText: "$device.displayName was fliped to face # $faceId",
 			isStateChange: true
 	   ] )
@@ -314,20 +306,19 @@ def Map slideEvents(Integer targetFace) {
 	if ( targetFace != device.currentValue("face") as Integer ) { log.info "Stale face data, updating."; setFace(targetFace) }
 	if (!settings.cubeMode || settings.cubeMode in ['0','2'] ) {
 		sendEvent( [
-			name: "button",
-			value: "pushed",
-			data: [buttonNumber: 4, face: targetFace],
+			name: "pushed",
+			value: 4,
+			data: [face: targetFace],
 			descriptionText: (settings.cubeMode == '0') ? "$device.displayName detected slide motion." : null,
 			isStateChange: true,
-			displayed: (settings.cubeMode == '0') ? true : false
 		]  )
 	}
 
 	if ( settings.cubeMode in ['1','2'] ) {
 		sendEvent( [
-			name: "button",
-			value: "pushed",
-			data: [buttonNumber: targetFace+((settings.cubeMode == '1') ? 7 : 14), face: targetFace],
+			name: "pushed",
+			value: targetFace+((settings.cubeMode == '1') ? 7 : 14),
+			data: [face: targetFace],
 			descriptionText: "$device.displayName was slid with face # $targetFace up.",
 			isStateChange: true
 		] ) }
@@ -337,19 +328,18 @@ def knockEvents(Integer targetFace) {
 	if ( targetFace != device.currentValue("face") as Integer ) { log.info "Stale face data, updating."; setFace(targetFace) }
 	if (!settings.cubeMode || settings.cubeMode in ['0','2'] ) {
 		sendEvent( [
-			name: "button",
-			value: "pushed",
-			data: [buttonNumber: 5, face: targetFace],
+			name: "pushed",
+			value: 5,
+			data: [face: targetFace],
 			descriptionText: (settings.cubeMode == '0') ? "$device.displayName detected knock motion." : null,
 			isStateChange: true,
-			displayed: (settings.cubeMode == '0') ? true : false
 		] )
 	}
 	if ( settings.cubeMode in ['1','2'] ) {
 		sendEvent( [
-			name: "button",
-			value: "pushed",
-			data: [buttonNumber: targetFace+((settings.cubeMode == '1') ? 13 : 20), face: targetFace],
+			name: "pushed",
+			value: targetFace+((settings.cubeMode == '1') ? 13 : 20),
+			data: [face: targetFace],
 			descriptionText: "$device.displayName was knocked with face # $targetFace up",
 			isStateChange: true
 		] )
@@ -361,19 +351,18 @@ def rotateEvents(Integer angle) {
 	if ( angle > 0 ) {
 		if (!settings.cubeMode || settings.cubeMode in ['0','2'] ) {
 			sendEvent( [
-				name: "button",
-				value: "pushed",
-				data: [buttonNumber: 6, face: device.currentValue("face"), angle: angle],
+				name: "pushed",
+				value: 6,
+				data: [face: device.currentValue("face"), angle: angle],
 				descriptionText: (settings.cubeMode == '0') ? "$device.displayName was rotated right." : null,
 				isStateChange: true,
-				displayed: (settings.cubeMode == '0') ? true : false
 			] )
 		}
 		if ( settings.cubeMode in ['1','2'] ) {
 			sendEvent( [
-				name: "button",
-				value: "pushed",
-				data: [buttonNumber: (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 19 : 26), face: device.currentValue("face")],
+				name: "pushed",
+				value: (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 19 : 26),
+				data: [face: device.currentValue("face")],
 				descriptionText: "$device.displayName was rotated right (Face # ${device.currentValue("face")}).",
 				isStateChange: true
 			] )
@@ -381,19 +370,18 @@ def rotateEvents(Integer angle) {
 	} else {
 		if (!settings.cubeMode || settings.cubeMode in ['0','2'] ) {
 			sendEvent( [
-				name: "button",
-				value: "pushed",
-				data: [buttonNumber: 7, face: device.currentValue("face"), angle: angle],
+				name: "pushed",
+				value: 7,
+				data: [face: device.currentValue("face"), angle: angle],
 				descriptionText: (settings.cubeMode == '0') ? "$device.displayName was rotated left." : null,
 				isStateChange: true,
-				displayed: (settings.cubeMode == '0') ? true : false
 			] )
 		}
 		if ( settings.cubeMode in ['1','2'] ) {
 			sendEvent( [
-				name: "button",
-				value: "pushed",
-				data: [buttonNumber: (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 25 : 32), face: device.currentValue("face")],
+				name: "pushed",
+				value: (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 25 : 32),
+				data: [face: device.currentValue("face")],
 				descriptionText: "$device.displayName was rotated left (Face # ${device.currentValue("face")}).",
 				isStateChange: true
 			] )
@@ -401,23 +389,66 @@ def rotateEvents(Integer angle) {
 	}
 }
 
-def reset() {
+private def displayDebugLog(message) {
+	if (debugLogging) log.debug "${device.displayName}: ${message}"
 }
 
-def initialize() {
-	sendState()
+private def displayInfoLog(message) {
+	if (infoLogging || state.prefsSetCount != 1)
+		log.info "${device.displayName}: ${message}"
 }
 
-def poll() {
-	//sendState()
+//Reset the batteryLastReplaced date to current date
+def resetBatteryReplacedDate(paired) {
+	def newlyPaired = paired ? " for newly paired sensor" : ""
+	sendEvent(name: "batteryLastReplaced", value: new Date())
+	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
 }
 
-def sendState() {
-	sendEvent(name: "numberOfButtons", value: 7)
+// this call is here to avoid Groovy errors when the Push command is used
+// it is empty because the Xioami button is non-controllable
+def push() {
+	displayDebugLog("No action taken on Push Command. This button cannot be controlled.")
 }
 
+// this call is here to avoid Groovy errors when the Hold command is used
+// it is empty because the Xioami button is non-controllable
+def hold() {
+	displayDebugLog("No action taken on Hold Command. This button cannot be controlled!")
+}
+
+// installed() runs just after a device is paired
+def installed() {
+	state.prefsSetCount = 0
+	displayInfoLog("Installing")
+	numButtons()
+}
+
+// configure() runs after installed() when a device is paired or reconnected
+def configure() {
+	displayInfoLog("Configuring")
+	if (!device.currentState('batteryLastReplaced')?.value)
+		resetBatteryReplacedDate(true)
+	numButtons()
+	displayInfoLog("Number of buttons = ${device.currentState('numberOfButtons')?.value}")
+	state.prefsSetCount = 1
+	return
+}
+// updated() runs every time user saves preferences
 def updated() {
-	if ( state.lastUpdated && (now() - state.lastUpdated) < 500 ) return
+	displayInfoLog("Updating preference settings")
+	if (!device.currentState('batteryLastReplaced')?.value)
+		resetBatteryReplacedDate(true)
+	numButtons()
+	displayInfoLog("Number of buttons = ${device.currentState('numberOfButtons')?.value}")
+	displayInfoLog("Info message logging enabled")
+	displayDebugLog("Debug message logging enabled")
+}
+
+// Set number of buttons available to Apps based on user setting
+def numButtons() {
+	if (state.lastUpdated && (now() - state.lastUpdated) < 500)
+		return
 	switch(settings.cubeMode) {
 		case "1": sendEvent(name: "numberOfButtons", value: 36); break
 		case "2": sendEvent(name: "numberOfButtons", value: 43); break
