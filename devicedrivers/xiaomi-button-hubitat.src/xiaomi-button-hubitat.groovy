@@ -53,9 +53,9 @@ metadata {
 	preferences {
 		//Button Config
 		input "waittoHeld", "number", title: "Hold button for ___ seconds to set button 1 'held' state", description: "Default = 1 second", range: "1..60"
-		//Battery Reset Config
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7"
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4"
+		//Battery Voltage Range
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", description: "Default = 2.5 Volts", type: "decimal", range: "2..2.7"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", description: "Default = 3.0 Volts", type: "decimal", range: "2.8..3.4"
 		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
