@@ -1,7 +1,7 @@
 /**
  *  Xiaomi "Original" & Aqara Door/Window Sensor
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.6
+ *  Version 0.7
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -38,9 +38,8 @@ metadata {
 		capability "Battery"
 
 		attribute "lastCheckin", "String"
-		attribute "lastCheckinDate", "String"
 		attribute "lastOpened", "String"
-		attribute "lastOpenedDate", "String"
+		attribute "lastClosed", "String"
 		attribute "batteryLastReplaced", "String"
 
 		// fingerprint for Xiaomi "Original" Door/Window Sensor
@@ -55,65 +54,61 @@ metadata {
 	}
 
 	preferences {
-		//Date & Time Config
-		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
-		input name: "clockformat", type: "bool", title: "Use 24 hour clock?", description: ""
-		//Battery Reset Config
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
-		//Debug logging Config
-		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: false
+		//Battery Voltage Range
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", description: "Default = 2.5 Volts", type: "decimal", range: "2..2.7"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", description: "Default = 3.0 Volts", type: "decimal", range: "2.8..3.4"
+		//Logging Message Config
+		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
+		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 	}
 }
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	displayDebugLog("Parsing description: ${description}")
-
-	// Determine current time and date in the user-selected date format and clock style
-	def now = formatDate()
-	def nowDate = new Date(now).getTime()
-
-	// lastCheckin and lastOpenedDate can be used to determine if the sensor is "awake" and connected
-	sendEvent(name: "lastCheckin", value: now)
-	sendEvent(name: "lastCheckinDate", value: nowDate)
-
 	Map map = [:]
+
+	// lastCheckin can be used with webCoRE
+	sendEvent(name: "lastCheckin", value: now())
+
+	displayDebugLog("Parsing message: ${description}")
 
 	// Send message data to appropriate parsing function based on the type of report
 	if (cluster == "0006") {
-		map = parseContact(valueHex)
-		if (map.value == "open") {
-			sendEvent(name: "lastOpened", value: now)
-			sendEvent(name: "lastOpenedDate", value: nowDate)
-		}
-	} else if (cluster == "0000" & attrId == "0005") {
+		// Parse open / closed status report
+		map = parseContact(Integer.parseInt(valueHex),16)
+	} else if (attrId == "0005") {
 		displayDebugLog("Reset button was short-pressed")
+		// Parse battery level from longer type of announcement message
 		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
-	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
+	} else if (attrId == "FF01" || attrId == "FF02")) {
+		// Parse battery level from hourly announcement message
 		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
-	} else if (!(cluster == "0000" & attrId == "0001")) {
+	} else {
 		displayDebugLog("Unable to parse ${description}")
 	}
 
-	if (map) {
-		displayDebugLog(map.descriptionText)
+	if (map != [:]) {
+		displayInfoLog(map.descriptionText)
+		displayDebugLog("Creating event $map")
 		return createEvent(map)
 	} else
 		return [:]
 }
 
 // Parse open/close report
-private parseContact(openClosed) {
-	def value = (openClosed == "01") ? "open" : "closed"
+private parseContact(closedOpen) {
+	def value = ["closed", "open"]
+	def desc = ["closed", "opened"]
+	def coreEvent = ["lastClosed", "lastOpened"]
+	displayDebugLog("Setting ${coreEvent[closedOpen]} to current date/time for webCoRE")
+	sendEvent(name: coreEvent[closedOpen], value: now(), descriptionText: "Updated ${coreEvent[closedOpen]} (webCoRE)")
 	return [
 		name: 'contact',
-		value: value,
+		value: value[closedOpen],
 		isStateChange: true,
-		descriptionText: "Contact was ${value == 'open' ? 'opened' : 'closed'}"
+		descriptionText: "Contact was ${desc[closedOpen]}"
 	]
 }
 
@@ -133,12 +128,14 @@ private parseBattery(description) {
 	def maxVolts = voltsmax ? voltsmax : 3.0
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
+	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
+	displayInfoLog(descText)
 	def result = [
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: descText
 	]
 	return result
 }
@@ -146,96 +143,58 @@ private parseBattery(description) {
 // Manually override contact state to closed
 def resetToClosed() {
 	if (device.currentState('contact')?.value == "open") {
-		def closedText = "Manually reset to closed"
-		sendEvent(
-			name:'contact',
-			value:'closed',
-			isStateChange: true,
-			descriptionText: closedText
-		)
-		displayDebugLog(closedText)
+		displayInfoLog("Manually reset to closed")
+		sendEvent(parseContact(0))
 	}
 }
 
 // Manually override contact state to open
 def resetToOpen() {
 	if (device.currentState('contact')?.value == "closed") {
-		def openText = "Manually reset to open"
-		sendEvent(
-			name:'contact',
-			value:'open',
-			isStateChange: true,
-			descriptionText: openText
-		)
-		displayDebugLog(openText)
+		displayInfoLog("Manually reset to open")
+		sendEvent(parseContact(1))
 	}
-}
-
-//Reset the batteryLastReplaced date to current date
-def resetBatteryReplacedDate(paired) {
-	def now = formatDate(true)
-	def logText = "Setting Battery Last Replaced to current date"
-	sendEvent(name: "batteryLastReplaced", value: now)
-	if (paired)
-		log.debug "${logText} for newly paired sensor"
-	displayDebugLog(logText)
 }
 
 private def displayDebugLog(message) {
 	if (debugLogging) log.debug "${device.displayName}: ${message}"
 }
 
-// installed() runs just after a sensor is paired
-def installed() {
-	displayDebugLog("Installing")
-	if (!batteryLastReplaced) resetBatteryReplacedDate(true)
+private def displayInfoLog(message) {
+	if (infoLogging || state.prefsSetCount != 1)
+		log.info "${device.displayName}: ${message}"
 }
 
-// configure() runs after installed() when a sensor is paired
+//Reset the batteryLastReplaced date to current date
+def resetBatteryReplacedDate(paired) {
+	def newlyPaired = paired ? " for newly paired sensor" : ""
+	sendEvent(name: "batteryLastReplaced", value: new Date())
+	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
+}
+
+// installed() runs just after a sensor is paired
+def installed() {
+	displayInfoLog("Installing")
+	state.prefsSetCount = 0
+}
+
+// configure() runs after installed() when a sensor is paired or reconnected
 def configure() {
-	displayDebugLog("Configuring")
+	displayInfoLog("Configuring")
+	init()
+	state.prefsSetCount = 1
 	return
 }
 
 // updated() will run every time user saves preferences
 def updated() {
-	displayDebugLog("Updating preference settings")
-	if(battReset){
-		resetBatteryReplacedDate()
-		device.updateSetting("battReset", false)
-	}
+	displayInfoLog("Updating preference settings")
+	init()
+	displayInfoLog("Info message logging enabled")
+	displayDebugLog("Debug message logging enabled")
 }
 
-def formatDate(batteryReset) {
-	def correctedTimezone = ""
-	def timeString = clockformat ? "HH:mm:ss" : "h:mm:ss aa"
-
-	// If user's hub timezone is not set, display error messages in log and events log, and set timezone to GMT to avoid errors
-	if (!(location.timeZone)) {
-		correctedTimezone = TimeZone.getTimeZone("GMT")
-		log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your Hubitat hub location."
-		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your Hubitat hub location.")
-	}
-	else {
-		correctedTimezone = location.timeZone
-	}
-
-	if (dateformat == "US" || dateformat == "" || dateformat == null) {
-		if (batteryReset)
-			return new Date().format("MMM dd yyyy", correctedTimezone)
-		else
-			return new Date().format("EEE MMM dd yyyy ${timeString}", correctedTimezone)
-	}
-	else if (dateformat == "UK") {
-		if (batteryReset)
-			return new Date().format("dd MMM yyyy", correctedTimezone)
-		else
-			return new Date().format("EEE dd MMM yyyy ${timeString}", correctedTimezone)
-	}
-	else {
-		if (batteryReset)
-			return new Date().format("yyyy MMM dd", correctedTimezone)
-		else
-			return new Date().format("EEE yyyy MMM dd ${timeString}", correctedTimezone)
-	}
+def init() {
+	if (!device.currentState('batteryLastReplaced')?.value)
+		resetBatteryReplacedDate(true)
 }
