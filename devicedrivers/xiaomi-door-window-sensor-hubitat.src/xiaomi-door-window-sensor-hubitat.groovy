@@ -82,7 +82,7 @@ def parse(String description) {
 		displayDebugLog("Reset button was short-pressed")
 		// Parse battery level from longer type of announcement message
 		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
-	} else if (attrId == "FF01" || attrId == "FF02")) {
+	} else if (attrId == "FF01" || attrId == "FF02") {
 		// Parse battery level from hourly announcement message
 		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
 	} else {
