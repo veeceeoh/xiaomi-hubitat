@@ -81,7 +81,7 @@ def parse(String description) {
 		// Parse battery level from hourly announcement message
 		map = parseBattery(valueHex)
 	else
-		displayDebugLog("Unable to parse ${description}")
+		displayDebugLog("Unable to parse message")
 
 	if (map != [:]) {
 		displayInfoLog(map.descriptionText)
