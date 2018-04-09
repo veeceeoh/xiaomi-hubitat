@@ -52,11 +52,11 @@ metadata {
 
 	preferences {
 		//Button Config
-		input "waittoHeld", "number", title: "Hold button for ___ seconds to set button 1 'held' state", description: "Default = 1 second", range: "1..60"
+		input "waittoHeld", "number", title: "Hold button for ___ seconds to set button 1 'held' state. Default = 1 second", description: "", range: "1..60"
 		//Battery Voltage Range
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", description: "Default = 2.5 Volts", type: "decimal", range: "2..2.7"
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", description: "Default = 3.0 Volts", type: "decimal", range: "2.8..3.4"
-		//Logging Message Config
+ 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
+ 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "", type: "decimal", range: "2.8..3.4"
+ 		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 	}
@@ -75,19 +75,19 @@ def parse(String description) {
 	displayDebugLog("Parsing message: ${description}")
 
 	// Send message data to appropriate parsing function based on the type of report
-	if (cluster == "0006") {
+	if (cluster == "0006")
 		// Parse button press message
 		map = parseButtonMessage(Integer.parseInt(valueHex))
-	} else if (cluster == "0000" & attrId == "0005") {
+    else if (cluster == "0000" & attrId == "0005") {
 		displayDebugLog("Reset button was short-pressed")
 		// Parse battery level from longer type of announcement message
 		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
-	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
+    }
+	else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02"))
 		// Parse battery level from hourly announcement message
 		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
-	} else if (!(cluster == "0000" & attrId == "0001")) {
+	else if (!(cluster == "0000" & attrId == "0001"))
 		displayDebugLog("Unable to parse message")
-	}
 
 	if (map != [:]) {
 		displayDebugLog("Creating event $map")
