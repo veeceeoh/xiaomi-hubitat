@@ -1,7 +1,7 @@
 /**
  * Xiaomi "Original" & Aqara Temperature Humidity Sensor
  * Device Driver for Hubitat Elevation hub
- * Version 0.6
+ * Version 0.7
  *
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -36,8 +36,8 @@ metadata {
 		capability "Sensor"
 		capability "Battery"
 
+		attribute "pressure", "Decimal"
 		attribute "lastCheckin", "String"
-		attribute "lastCheckinDate", "String"
 		attribute "batteryLastReplaced", "String"
 
 		//fingerprint for Xioami "original" Temperature Humidity Sensor
@@ -54,14 +54,12 @@ metadata {
 		input "humidOffset", "decimal", title:"Humidity Offset", description:"", range: "*..*"
 		input "pressOffset", "decimal", title:"Pressure Offset (Aqara model only)", description:"", range: "*..*"
 		input name:"PressureUnits", type:"enum", title:"Pressure Units (Aqara model only)", description:"", options:["mbar", "kPa", "inHg", "mmHg"]
-		//Date & Time Config
-		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
-		input name: "clockformat", type: "bool", title: "Use 24 hour clock?", description: ""
-		//Battery Voltage Offset
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
-		//Debug logging Config
-		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: false
+		//Battery Voltage Range
+ 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
+ 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "", type: "decimal", range: "2.8..3.4"
+ 		//Logging Message Config
+ 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
+ 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 	}
 }
 
@@ -70,36 +68,31 @@ def parse(String description) {
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	displayDebugLog("Parsing description: ${description}")
-
-	// Determine current time and date in the user-selected date format and clock style
-	def now = formatDate()
-	def nowDate = new Date(now).getTime()
-
-	// Any report - temp, humidity, pressure, & battery - results in a lastCheckin event and update to Last Checkin tile
-	// However, only a non-parseable report results in lastCheckin being displayed in events log
-	sendEvent(name: "lastCheckin", value: now, displayed: false)
-	sendEvent(name: "lastCheckinDate", value: nowDate, displayed: false)
-
 	Map map = [:]
 
-	// Send message data to appropriate parsing function based on the type of report
-	if (cluster == "0402") {
-		map = parseTemperature(valueHex)
-	} else if (cluster == "0405") {
-		map = parseHumidity(valueHex)
-	} else if (cluster == "0403") {
-		map = parsePressure(valueHex)
-	} else if (cluster == "0000" & attrId == "0005") {
-		displayDebugLog("Reset button was short-pressed")
-	} else if	(cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
-		map = parseBattery(valueHex)
-	} else {
-		displayDebugLog("Unable to parse ${description}")
-	}
+	// lastCheckin can be used with webCoRE
+	sendEvent(name: "lastCheckin", value: now())
 
-	if (map) {
-		displayDebugLog(map.descriptionText)
+	displayDebugLog("Parsing message: ${description}")
+
+	// Send message data to appropriate parsing function based on the type of report
+	if (cluster == "0402")
+		map = parseTemperature(valueHex)
+	else if (cluster == "0405")
+		map = parseHumidity(valueHex)
+	else if (cluster == "0403")
+		map = parsePressure(valueHex)
+	else if (cluster == "0000" & attrId == "0005")
+		displayDebugLog("Reset button was short-pressed")
+	else if	(cluster == "0000" & (attrId == "FF01" || attrId == "FF02"))
+		// Parse battery level from hourly announcement message
+		map = parseBattery(valueHex)
+	else
+		displayDebugLog("Unable to parse message")
+
+	if (map != [:]) {
+		displayInfoLog(map.descriptionText)
+		displayDebugLog("Creating event $map")
 		return createEvent(map)
 	} else
 		return [:]
@@ -177,88 +170,63 @@ private parsePressure(description) {
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
-	displayDebugLog("Battery parse string = ${description[6..9]}")
+	displayDebugLog("Battery parse string = ${description}")
 	def rawValue = Integer.parseInt((description[8..9] + description[6..7]),16)
 	def rawVolts = rawValue / 1000
 	def minVolts = voltsmin ? voltsmin : 2.5
 	def maxVolts = voltsmax ? voltsmax : 3.0
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
+	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
 	def result = [
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: descText
 	]
 	return result
-}
-
-//Reset the batteryLastReplaced date to current date
-def resetBatteryReplacedDate(paired) {
-	def now = formatDate(true)
-	def logText = "Setting Battery Last Replaced to current date"
-	sendEvent(name: "batteryLastReplaced", value: now)
-	if (paired)
-		log.debug "${logText} for newly paired sensor"
-	displayDebugLog(logText)
 }
 
 private def displayDebugLog(message) {
 	if (debugLogging) log.debug "${device.displayName}: ${message}"
 }
 
+private def displayInfoLog(message) {
+	if (infoLogging || state.prefsSetCount != 1)
+		log.info "${device.displayName}: ${message}"
+}
+
+//Reset the batteryLastReplaced date to current date
+def resetBatteryReplacedDate(paired) {
+	def newlyPaired = paired ? " for newly paired sensor" : ""
+	sendEvent(name: "batteryLastReplaced", value: new Date())
+	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
+}
+
 // installed() runs just after a sensor is paired
 def installed() {
+	state.prefsSetCount = 0
 	displayDebugLog("Installing")
-	if (!batteryLastReplaced) resetBatteryReplacedDate(true)
 }
 
 // configure() runs after installed() when a sensor is paired
 def configure() {
-	displayDebugLog("Configuring")
+	displayInfoLog("Configuring")
+	init()
+	state.prefsSetCount = 1
 	return
 }
 
 // updated() will run every time user saves preferences
 def updated() {
-	displayDebugLog("Updating preference settings")
-	if(battReset){
-		resetBatteryReplacedDate()
-		device.updateSetting("battReset", false)
-	}
+	displayInfoLog("Updating preference settings")
+	init()
+	displayInfoLog("Info message logging enabled")
+	displayDebugLog("Debug message logging enabled")
 }
 
-def formatDate(batteryReset) {
-	def correctedTimezone = ""
-	def timeString = clockformat ? "HH:mm:ss" : "h:mm:ss aa"
-
-	// If user's hub timezone is not set, display error messages in log and events log, and set timezone to GMT to avoid errors
-	if (!(location.timeZone)) {
-		correctedTimezone = TimeZone.getTimeZone("GMT")
-		log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your Hubitat hub location."
-		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your Hubitat hub location.")
-	}
-	else {
-		correctedTimezone = location.timeZone
-	}
-
-	if (dateformat == "US" || dateformat == "" || dateformat == null) {
-		if (batteryReset)
-			return new Date().format("MMM dd yyyy", correctedTimezone)
-		else
-			return new Date().format("EEE MMM dd yyyy ${timeString}", correctedTimezone)
-	}
-	else if (dateformat == "UK") {
-		if (batteryReset)
-			return new Date().format("dd MMM yyyy", correctedTimezone)
-		else
-			return new Date().format("EEE dd MMM yyyy ${timeString}", correctedTimezone)
-	}
-	else {
-		if (batteryReset)
-			return new Date().format("yyyy MMM dd", correctedTimezone)
-		else
-			return new Date().format("EEE yyyy MMM dd ${timeString}", correctedTimezone)
-	}
+def init() {
+	if (!device.currentState('batteryLastReplaced')?.value)
+		resetBatteryReplacedDate(true)
 }
