@@ -52,7 +52,7 @@ metadata {
 
 	preferences {
 		//Reset to No Motion Config
-		input "motionreset", "number", title: "After motion is detected, wait __ second(s) until resetting to inactive state (default is 60, same as hardware reset).", description: "", range: "1..7200"
+		input "motionreset", "number", title: "After motion is detected, wait ___ second(s) until resetting to inactive state:", description: "Default = 61 seconds (Hardware resets at 60 seconds)", range: "1..7200"
 		//Battery Voltage Range
 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", description: "Default = 2.5 Volts", type: "decimal", range: "2..2.7"
 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", description: "Default = 3.0 Volts", type: "decimal", range: "2.8..3.4"
@@ -75,20 +75,19 @@ def parse(String description) {
 	displayDebugLog("Parsing message: ${description}")
 
 	// Send message data to appropriate parsing function based on the type of report
-	if (cluster == "0406") {
+	if (cluster == "0406")
 		// Parse motion detected report
 		map = parseMotion()
-	} else if (cluster == "0400") {
+	else if (cluster == "0400")
 		// Parse illuminance value report
 		map = parseIlluminance(valueHex)
-	} else if (cluster == "0000" & attrId == "0005") {
+	else if (cluster == "0000" & attrId == "0005")
 		displayDebugLog("Reset button was short-pressed")
-	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
+	else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02"))
 		// Parse battery level from hourly announcement message
 		map = parseBattery(valueHex)
-	} else {
+	else
 		displayDebugLog("Unable to parse ${description}")
-	}
 
 	if (map != [:]) {
 		displayInfoLog(map.descriptionText)
@@ -100,7 +99,7 @@ def parse(String description) {
 
 // Parse motion active report
 private parseMotion() {
-	def seconds = motionreset ? motionreset : 60
+	def seconds = motionreset ? motionreset : 61
 	// The sensor only sends a motion detected message so reset to motion inactive is performed in code
 	runIn(seconds, resetToMotionInactive)
 	sendEvent(name: "lastMotion", value: now())
@@ -153,7 +152,7 @@ private parseBattery(description) {
 // If currently in 'active' motion detected state, resetToMotionInactive() resets to 'inactive' state and displays 'no motion'
 def resetToMotionInactive() {
 	if (device.currentState('motion')?.value == "active") {
-		def seconds = motionreset ? motionreset : 60
+		def seconds = motionreset ? motionreset : 61
 		def descText = "Reset to motion inactive after ${seconds} seconds"
 		sendEvent(
 			name:'motion',
