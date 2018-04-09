@@ -137,6 +137,7 @@ def resetToMotionInactive() {
 	if (device.currentState('motion')?.value == "active") {
 		def seconds = motionreset ? motionreset : 61
 		def descText = "Reset to motion inactive after ${seconds} seconds"
+		sendEvent(name: "lastMotion", value: now())
 		sendEvent(
 			name:'motion',
 			value:'inactive',
