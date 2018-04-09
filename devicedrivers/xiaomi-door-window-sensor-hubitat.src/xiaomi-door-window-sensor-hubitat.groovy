@@ -56,7 +56,7 @@ metadata {
 	preferences {
 		//Battery Voltage Range
  		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
- 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "Default = 3.0 Volts", type: "decimal", range: "2.8..3.4"
+ 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "", type: "decimal", range: "2.8..3.4"
  		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
@@ -86,7 +86,7 @@ def parse(String description) {
 		// Parse battery level from hourly announcement message
 		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
 	} else {
-		displayDebugLog("Unable to parse ${description}")
+		displayDebugLog("Unable to parse message")
 	}
 
 	if (map != [:]) {
