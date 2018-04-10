@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Aqara Leak Sensor
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7
+ *  Version 0.7.1
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -62,8 +62,9 @@ metadata {
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
-	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
+	def status = (description?.startsWith('zone status')) ? description - "zone status 0x000" : ""
+	def attrId = status ? "" : description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
+	def valueHex = status ? "" : description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
 
 	// lastCheckin can be used with webCoRE
@@ -72,9 +73,9 @@ def parse(String description) {
 	displayDebugLog("Parsing message: ${description}")
 
 	// Send message data to appropriate parsing function based on the type of report
-	if (description?.startsWith('zone status')) {
+	if (status) {
 		// Parse dry / wet status report
-		map = parseZoneStatusMessage(description)
+		map = parseZoneStatusMessage(Integer.parseInt(status))
 	} else if (attrId == "0005") {
 		displayDebugLog("Reset button was short-pressed")
 		// Parse battery level from longer type of announcement message
@@ -95,15 +96,11 @@ def parse(String description) {
 }
 
 // Parse IAS Zone Status message (wet or dry)
-private parseZoneStatusMessage(description) {
-	def value = "dry"
-	def descText = "Sensor is dry"
-	if (description?.startsWith('zone status 0x0001')) {
-		value = "wet"
-		descText = "Sensor detected water"
-		sendEvent(name: "lastWet", value: now())
-	} else
-		sendEvent(name: "lastDry", value: now())
+private parseZoneStatusMessage(status) {
+	def value = status ? "wet" : "dry"
+	def coreType = status ? "Wet" : "Dry"
+	def descText = status ? "Sensor detected water" : "Sensor is dry"
+	sendEvent(name: "last$coreType", value: now())
 	return [
 		name: 'water',
 		value: value,
@@ -142,30 +139,20 @@ private parseBattery(description) {
 // Manually override contact state to dry
 def resetToDry() {
 	if (device.currentState('water')?.value == "wet") {
-		def descText = "Manually reset to dry"
-		sendEvent(
-			name:'water',
-			value:'dry',
-			isStateChange: true,
-			descriptionText: descText
-		)
-		sendEvent(name: "lastDry", value: now())
-		displayInfoLog(descText)
+		def map = parseZoneStatusMessage(0)
+		map.descriptionText = "Manually reset to dry"
+		displayInfoLog(map.descriptionText)
+        sendEvent(map)
 	}
 }
 
 // Manually override contact state to wet
 def resetToWet() {
 	if (device.currentState('water')?.value == "dry") {
-		def descText = "Manually reset to wet"
-		sendEvent(
-			name:'water',
-			value:'wet',
-			isStateChange: true,
-			descriptionText: descText
-		)
-		sendEvent(name: "lastWet", value: now())
-		displayInfoLog(descText)
+		def map = parseZoneStatusMessage(1)
+		map.descriptionText = "Manually reset to wet"
+		displayInfoLog(map.descriptionText)
+        sendEvent(map)
 	}
 }
 
