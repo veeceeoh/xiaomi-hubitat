@@ -1,7 +1,7 @@
 /*
  *  Xiaomi Aqara Smart Light Switch - Wireless 2 button model WXKG02LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.5 gn0st1c
+ *  Version 0.6 gn0st1c
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -15,8 +15,8 @@
  *
  *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
  *
- * 
- * https://xiaomi-mi.com/sockets-and-sensors/xiaomi-aqara-smart-light-control-set
+ *
+ *  https://xiaomi-mi.com/sockets-and-sensors/xiaomi-aqara-smart-light-control-set
  */
 
 metadata {
@@ -26,78 +26,77 @@ metadata {
 		capability "Sensor"
 
 		attribute "lastCheckin", "String"
-		attribute "lastCheckinDate", "String"
-		attribute "lastPressed", "String"
-		attribute "lastPressedDate", "String"
 		attribute "batteryLastReplaced", "String"
+		attribute "buttonPressed", "String"
 
 		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw2Un"
-//		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw2Un"
 
 		command "resetBatteryReplacedDate"
 	}
 
 	preferences {
-		//Battery Reset Config
-		input name: "voltsmin", type: "decimal", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7, default 2.5)", description: "", range: "2..2.7"
-		input name: "voltsmax", type: "decimal", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4, default 3.0)", description: "", range: "2.8..3.4"
-		//Date & Time Config
-		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
-		input name: "clockformat", type: "bool", title: "Use 24 hour clock", description: "", defaultValue: true
-		//Logging
-		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: true
+		//Battery Voltage Range
+ 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
+ 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "", type: "decimal", range: "2.8..3.4"
+ 		//Logging Message Config
+		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
+		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 	}
 }
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-	displayDebugLog "Parsing description: ${description}"
-	def endpoint = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "endpoint"}?.split(":")[1].trim())
-	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
+	def endpoint = description.split(",").find {it.split(":")[0].trim() == "endpoint"}?.split(":")[1].trim()
+	def cluster	= description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	def pressType = ["", "Left button", "Right button", "Both buttons"] 
-
-	// Determine current time and date in the user-selected date format and clock style
-	def now = formatDate()
-	def nowDate = new Date(now).getTime()
-
-	// lastCheckin and lastPressedDate can be used to determine if the sensor is "awake" and connected
-	sendEvent(name: "lastCheckin", value: now)
-	sendEvent(name: "lastCheckinDate", value: nowDate)
-
 	Map map = [:]
 
-	// Handle message data based on the type of report
+	// lastCheckin can be used with webCoRE
+	sendEvent(name: "lastCheckin", value: now())
+
+	displayDebugLog("Parsing message: ${description}")
+
+	// Send message data to appropriate parsing function based on the type of report
 	if (cluster == "0006") {
-		// Endpoint used for button number: 01 = Left, 02 = Right, 03 = Both
-		map = [
-			name: 'pushed',
-			value: endpoint,
-			isStateChange: true,
-			descriptionText: "${pressType[endpoint]} pushed"
-		]
-		sendEvent(name: "lastPressed", value: now)
-		sendEvent(name: "lastPressedDate", value: nowDate)
+		// Parse button press: endpoint 01 = left, 02 = right, 03 = both
+		map = parseButtonPress(Integer.parseInt(endpoint))
 	} else if (cluster == "0000" & attrId == "0005") {
+		displayDebugLog "Reset button was short-pressed"
+		// Parse battery level from longer type of announcement message
 		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
 	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
+		// Parse battery level from hourly announcement message
 		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
 	} else if (!(cluster == "0000" & attrId == "0001")) {
 		displayDebugLog "Unable to parse ${description}"
 	}
 
-	if (map) {
-		displayDebugLog "${map.descriptionText}"
+	if (map != [:]) {
+		displayDebugLog("Creating event $map")
 		return createEvent(map)
-	} else {
+	} else
 		return [:]
-	}
+}
+
+// Build event map based on type of button press
+private Map parseButtonPress(value) {
+	def pushType = ["", "Left", "Right", "Both"]
+	def descText = "${pushType[value]} button${(value == 3) ? "s" : ""} pressed (Button $value pushed)"
+	displayInfoLog(descText)
+	displayDebugLog("Setting buttonPressed to current date/time for webCoRE")
+	sendEvent(name: "buttonPressed", value: now(), descriptionText: "Updated buttonPressed (webCoRE)")
+	return [
+		name: 'pushed',
+		value: value,
+		isStateChange: true,
+		descriptionText: descText
+	]
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
 private parseBattery(description) {
-	displayDebugLog "Parsing battery: ${description}"
+	displayDebugLog("Battery parse string = ${description}")
 	def MsgLength = description.size()
 	def rawValue
 	for (int i = 4; i < (MsgLength-3); i+=2) {
@@ -106,99 +105,70 @@ private parseBattery(description) {
 			break
 		}
 	}
-
 	def rawVolts = rawValue / 1000
 	def minVolts = voltsmin ? voltsmin : 2.5
 	def maxVolts = voltsmax ? voltsmax : 3.0
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
+	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
+	displayInfoLog(descText)
 	def result = [
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: descText
 	]
 	return result
-}
-
-//Reset the batteryLastReplaced date to current date
-def resetBatteryReplacedDate(paired) {
-	def now = formatDate(true)
-	def newlyPaired = paired ? " for newly paired sensor" : ""
-	sendEvent(name: "batteryLastReplaced", value: now)
-	displayDebugLog "Setting Battery Last Replaced to current date${newlyPaired}"
 }
 
 private def displayDebugLog(message) {
 	if (debugLogging) log.debug "${device.displayName}: ${message}"
 }
 
-def init() {
-	sendEvent(name: "numberOfButtons", value: 3)
-	if (!(device.currentValue("batteryLastReplaced")))
-		resetBatteryReplacedDate(true)
+private def displayInfoLog(message) {
+	if (infoLogging || state.prefsSetCount != 1)
+		log.info "${device.displayName}: ${message}"
+}
+
+//Reset the batteryLastReplaced date to current date
+def resetBatteryReplacedDate(paired) {
+	def newlyPaired = paired ? " for newly paired sensor" : ""
+	sendEvent(name: "batteryLastReplaced", value: new Date())
+	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
+}
+
+// this call is here to avoid Groovy errors when the Push command is used
+// it is empty because the Xioami button is non-controllable
+def push() {
+	displayDebugLog("No action taken on Push Command. This button cannot be controlled.")
 }
 
 // installed() runs just after a sensor is paired
 def installed() {
-	displayDebugLog "Installing"
-	init()
+	state.prefsSetCount = 0
+	displayInfoLog("Installing")
 }
 
 // configure() runs after installed() when a sensor is paired or reconnected
 def configure() {
-	displayDebugLog "Configuring"
+	displayInfoLog("Configuring")
 	init()
-	displayDebugLog "Number of buttons available to apps = 3"
-	device.updateSetting('debugLogging', false)
+	displayInfoLog("Number of buttons = 3")
+	state.prefsSetCount = 1
 	return
 }
 
 // updated() runs every time user saves preferences
 def updated() {
-	voltsmin = voltsmin ?: 2.5
-	voltsmax = voltsmax ?: 3.0
-	voltsmin = (voltsmin > 2.7) ? 2.7 : ((voltsmin < 2.0) ? 2.0 : voltsmin)
-	voltsmax = (voltsmax > 3.4) ? 3.4 : ((voltsmax < 2.8) ? 2.8 : voltsmax)
-	displayDebugLog "Min Volts = ${voltsmin}, Max Volts = ${voltsmax}"
-	displayDebugLog "Updated"
+	displayInfoLog("Updating preference settings")
 	init()
+	displayInfoLog("Info message logging enabled")
+	displayDebugLog("Debug message logging enabled")
 }
 
-// this call is here to avoid Groovy errors when the Push command is used
-// it is empty because the Xioami button is non-controllable
-def push(value) {
-    displayDebugLog "Push ${value ?:""} command sent - this device cannot receive commands"
-}
-
-def formatDate(batteryReset) {
-	def correctedTimezone = ""
-	def timeString = clockformat ? "HH:mm:ss" : "h:mm:ss aa"
-
-	// If user's hub timezone is not set, display error messages in log and events log, and set timezone to GMT to avoid errors
-	if (!(location.timeZone)) {
-		correctedTimezone = TimeZone.getTimeZone("GMT")
-		displayDebugLog "Time Zone not set, so GMT was used. Please set up your Hubitat hub location."
-		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your Hubitat hub location.")
-	} else {
-		correctedTimezone = location.timeZone
-	}
-
-	if (dateformat == "US" || dateformat == "" || dateformat == null) {
-		if (batteryReset)
-			return new Date().format("MMM dd yyyy", correctedTimezone)
-		else
-			return new Date().format("EEE MMM dd yyyy ${timeString}", correctedTimezone)
-	} else if (dateformat == "UK") {
-		if (batteryReset)
-			return new Date().format("dd MMM yyyy", correctedTimezone)
-		else
-			return new Date().format("EEE dd MMM yyyy ${timeString}", correctedTimezone)
-	} else {
-		if (batteryReset)
-			return new Date().format("yyyy MMM dd", correctedTimezone)
-		else
-			return new Date().format("EEE yyyy MMM dd ${timeString}", correctedTimezone)
-	}
+def init() {
+	if (!device.currentState('batteryLastReplaced')?.value)
+		resetBatteryReplacedDate(true)
+	sendEvent(name: "numberOfButtons", value: 3)
 }

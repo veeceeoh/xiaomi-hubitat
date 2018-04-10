@@ -1,7 +1,7 @@
 /**
  *  Xiaomi "Original" Motion Sensor
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.6
+ *  Version 0.7
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -36,9 +36,8 @@ metadata {
 		capability "Battery"
 
 		attribute "lastCheckin", "String"
-		attribute "lastCheckinDate", "String"
 		attribute "lastMotion", "String"
-		attribute "lastMotionDate", "String"
+		attribute "lastInactive", "String"
 		attribute "batteryLastReplaced", "String"
 
 		//fingerprint for Xioami "original" Motion Sensor
@@ -50,15 +49,13 @@ metadata {
 
 	preferences {
 		//Reset to No Motion Config
-		input "motionreset", "number", title: "After motion is detected, wait __ second(s) until resetting to inactive state (default is 60, same as hardware reset).", description: "", range: "1..7200"
-		//Date & Time Config
-		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
-		input name: "clockformat", type: "bool", title: "Use 24 hour clock?", description: ""
-		//Battery Reset Config
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
-		//Debug logging Config
-		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: false
+		input "motionreset", "number", title: "After motion is detected, wait ___ second(s) until resetting to inactive state. Default = 61 seconds (Hardware resets at 60 seconds)", description: "", range: "1..7200"
+		//Battery Voltage Range
+ 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
+ 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "", type: "decimal", range: "2.8..3.4"
+ 		//Logging Message Config
+ 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
+ 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 	}
 }
 
@@ -67,34 +64,28 @@ def parse(String description) {
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	displayDebugLog("Parsing description: ${description}")
-
-	// Determine current time and date in the user-selected date format and clock style
-	def now = formatDate()
-	def nowDate = new Date(now).getTime()
-
-	// Any report - temp, humidity, pressure, & battery - results in a lastCheckin event and update to Last Checkin tile
-	// However, only a non-parseable report results in lastCheckin being displayed in events log
-	sendEvent(name: "lastCheckin", value: now)
-	sendEvent(name: "lastCheckinDate", value: nowDate)
-
 	Map map = [:]
 
-	// Send message data to appropriate parsing function based on the type of report
-	if (cluster == "0406") {
-		map = parseMotion()
-		sendEvent(name: "lastMotion", value: now)
-		sendEvent(name: "lastMotionDate", value: nowDate)
-	} else if (cluster == "0000" & attrId == "0005") {
-		displayDebugLog("Reset button was short-pressed")
-	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
-		map = parseBattery(valueHex)
-	} else {
-		displayDebugLog("Unable to parse ${description}")
-	}
+	// lastCheckin can be used with webCoRE
+	sendEvent(name: "lastCheckin", value: now())
 
-	if (map) {
-		displayDebugLog(map.descriptionText)
+	displayDebugLog("Parsing message: ${description}")
+
+	// Send message data to appropriate parsing function based on the type of report
+	if (cluster == "0406")
+		// Parse motion detected report
+		map = parseMotion()
+	else if (cluster == "0000" & attrId == "0005")
+		displayDebugLog("Reset button was short-pressed")
+	else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02"))
+		// Parse battery level from hourly announcement message
+		map = parseBattery(valueHex)
+	else
+		displayDebugLog("Unable to parse message")
+
+	if (map != [:]) {
+		displayInfoLog(map.descriptionText)
+		displayDebugLog("Creating event $map")
 		return createEvent(map)
 	} else
 		return [:]
@@ -102,9 +93,10 @@ def parse(String description) {
 
 // Parse motion active report
 private parseMotion() {
-	def seconds = motionreset ? motionreset : 60
+	def seconds = motionreset ? motionreset : 61
 	// The sensor only sends a motion detected message so reset to motion inactive is performed in code
 	runIn(seconds, resetToMotionInactive)
+	sendEvent(name: "lastMotion", value: now())
 	return [
 		name: 'motion',
 		value: 'active',
@@ -129,12 +121,13 @@ private parseBattery(description) {
 	def maxVolts = voltsmax ? voltsmax : 3.0
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
+	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
 	def result = [
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: descText
 	]
 	return result
 }
@@ -142,83 +135,58 @@ private parseBattery(description) {
 // If currently in 'active' motion detected state, resetToMotionInactive() resets to 'inactive' state and displays 'no motion'
 def resetToMotionInactive() {
 	if (device.currentState('motion')?.value == "active") {
-		def seconds = motionreset ? motionreset : 60
-		def inactiveText = "Reset to motion inactive after ${seconds} seconds"
+		def seconds = motionreset ? motionreset : 61
+		def descText = "Reset to motion inactive after ${seconds} seconds"
+		sendEvent(name: "lastMotion", value: now())
 		sendEvent(
 			name:'motion',
 			value:'inactive',
 			isStateChange: true,
-			descriptionText: inactiveText
+			descriptionText: descText
 		)
-		displayDebugLog(inactiveText)
+		displayInfoLog(descText)
 	}
-}
-
-//Reset the batteryLastReplaced date to current date
-def resetBatteryReplacedDate(paired) {
-	def now = formatDate(true)
-	def logText = "Setting Battery Last Replaced to current date"
-	sendEvent(name: "batteryLastReplaced", value: now)
-	if (paired)
-		log.debug "${logText} for newly paired sensor"
-	displayDebugLog(logText)
 }
 
 private def displayDebugLog(message) {
 	if (debugLogging) log.debug "${device.displayName}: ${message}"
 }
 
+private def displayInfoLog(message) {
+	if (infoLogging || state.prefsSetCount != 1)
+		log.info "${device.displayName}: ${message}"
+}
+
+//Reset the batteryLastReplaced date to current date
+def resetBatteryReplacedDate(paired) {
+	def newlyPaired = paired ? " for newly paired sensor" : ""
+	sendEvent(name: "batteryLastReplaced", value: new Date())
+	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
+}
+
 // installed() runs just after a sensor is paired
 def installed() {
+	state.prefsSetCount = 0
 	displayDebugLog("Installing")
-	if (!batteryLastReplaced) resetBatteryReplacedDate(true)
 }
 
 // configure() runs after installed() when a sensor is paired
 def configure() {
-	displayDebugLog("Configuring")
+	displayInfoLog("Configuring")
+	init()
+	state.prefsSetCount = 1
 	return
 }
 
 // updated() will run every time user saves preferences
 def updated() {
-	displayDebugLog("Updating preference settings")
-	if(battReset){
-		resetBatteryReplacedDate()
-		device.updateSetting("battReset", false)
-	}
+	displayInfoLog("Updating preference settings")
+	init()
+	displayInfoLog("Info message logging enabled")
+	displayDebugLog("Debug message logging enabled")
 }
 
-def formatDate(batteryReset) {
-	def correctedTimezone = ""
-	def timeString = clockformat ? "HH:mm:ss" : "h:mm:ss aa"
-
-	// If user's hub timezone is not set, display error messages in log and events log, and set timezone to GMT to avoid errors
-	if (!(location.timeZone)) {
-		correctedTimezone = TimeZone.getTimeZone("GMT")
-		log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your Hubitat hub location."
-		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your Hubitat hub location.")
-	}
-	else {
-		correctedTimezone = location.timeZone
-	}
-
-	if (dateformat == "US" || dateformat == "" || dateformat == null) {
-		if (batteryReset)
-			return new Date().format("MMM dd yyyy", correctedTimezone)
-		else
-			return new Date().format("EEE MMM dd yyyy ${timeString}", correctedTimezone)
-	}
-	else if (dateformat == "UK") {
-		if (batteryReset)
-			return new Date().format("dd MMM yyyy", correctedTimezone)
-		else
-			return new Date().format("EEE dd MMM yyyy ${timeString}", correctedTimezone)
-	}
-	else {
-		if (batteryReset)
-			return new Date().format("yyyy MMM dd", correctedTimezone)
-		else
-			return new Date().format("EEE yyyy MMM dd ${timeString}", correctedTimezone)
-	}
+def init() {
+	if (!device.currentState('batteryLastReplaced')?.value)
+		resetBatteryReplacedDate(true)
 }

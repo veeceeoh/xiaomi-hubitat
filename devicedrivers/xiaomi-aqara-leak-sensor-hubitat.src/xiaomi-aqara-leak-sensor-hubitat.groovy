@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Aqara Leak Sensor
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.6
+ *  Version 0.7
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -39,9 +39,8 @@ metadata {
 		capability "Battery"
 
 		attribute "lastCheckin", "String"
-		attribute "lastCheckinDate", "String"
+		attribute "lastDry", "String"
 		attribute "lastWet", "String"
-		attribute "lastWetDate", "String"
 		attribute "batteryLastReplaced", "String"
 
 		fingerprint endpointId: "01", profileId: "0104", deviceId: "0402", inClusters: "0000,0003,0001", outClusters: "0019", manufacturer: "LUMI", model: "lumi.sensor_wleak.aq1"
@@ -52,53 +51,44 @@ metadata {
 	}
 
 	preferences {
-		//Date & Time Config
-		input name: "dateformat", type: "enum", title: "Date Format for lastCheckin: US (MDY), UK (DMY), or Other (YMD)", description: "", options:["US","UK","Other"]
-		input name: "clockformat", type: "bool", title: "Use 24 hour clock?", description: ""
-		//Battery Reset Config
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", type: "decimal", range: "2..2.7", defaultValue: 2.5
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", type: "decimal", range: "2.8..3.4", defaultValue: 3
-		//Debug logging Config
-		input name: "debugLogging", type: "bool", title: "Display debug log messages", description: "", defaultValue: false
+		//Battery Voltage Range
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "", type: "decimal", range: "2.8..3.4"
+		//Logging Message Config
+		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
+		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 	}
 }
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-	displayDebugLog("Parsing description: ${description}")
-
-	// Determine current time and date in the user-selected date format and clock style
-	def now = formatDate()
-	def nowDate = new Date(now).getTime()
-
-	// lastCheckin and lastCheckinDate can be used to determine if the sensor is "awake" and connected
-	sendEvent(name: "lastCheckin", value: now)
-	sendEvent(name: "lastCheckinDate", value: nowDate)
-
+	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
+	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
+
+	// lastCheckin can be used with webCoRE
+	sendEvent(name: "lastCheckin", value: now())
+
+	displayDebugLog("Parsing message: ${description}")
 
 	// Send message data to appropriate parsing function based on the type of report
 	if (description?.startsWith('zone status')) {
+		// Parse dry / wet status report
 		map = parseZoneStatusMessage(description)
-		if (map.value == "wet") {
-			sendEvent(name: "lastWet", value: now)
-			sendEvent(name: "lastWetDate", value: nowDate)
-		}
+	} else if (attrId == "0005") {
+		displayDebugLog("Reset button was short-pressed")
+		// Parse battery level from longer type of announcement message
+		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
+	} else if (attrId == "FF01") {
+		// Parse battery level from hourly announcement message
+		map = parseBattery(valueHex)
 	} else {
-		def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
-		def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-		if (attrId == "0005") {
-			displayDebugLog("Reset button was short-pressed")
-			map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
-		} else if (attrId == "FF01") {
-			map = parseBattery(valueHex)
-		} else {
-			ldisplayDebugLog("Unable to parse ${description}")
-		}
+		displayDebugLog("Unable to parse message")
 	}
 
-	if (map) {
-		displayDebugLog(map.descriptionText)
+	if (map != [:]) {
+		displayInfoLog(map.descriptionText)
+		displayDebugLog("Creating event $map")
 		return createEvent(map)
 	} else
 		return [:]
@@ -107,16 +97,18 @@ def parse(String description) {
 // Parse IAS Zone Status message (wet or dry)
 private parseZoneStatusMessage(description) {
 	def value = "dry"
-	def status = "Sensor is dry"
+	def descText = "Sensor is dry"
 	if (description?.startsWith('zone status 0x0001')) {
 		value = "wet"
-		status = "Sensor detected water"
-	}
+		descText = "Sensor detected water"
+		sendEvent(name: "lastWet", value: now())
+	} else
+		sendEvent(name: "lastDry", value: now())
 	return [
 		name: 'water',
 		value: value,
 		isStateChange: true,
-		descriptionText: "${status}"
+		descriptionText: descText
 	]
 }
 
@@ -136,12 +128,13 @@ private parseBattery(description) {
 	def maxVolts = voltsmax ? voltsmax : 3.0
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
+	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
 	def result = [
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
 		isStateChange: true,
-		descriptionText: "Battery level is ${roundedPct}%, raw battery is ${rawVolts}V"
+		descriptionText: descText
 	]
 	return result
 }
@@ -149,96 +142,72 @@ private parseBattery(description) {
 // Manually override contact state to dry
 def resetToDry() {
 	if (device.currentState('water')?.value == "wet") {
-		def dryText = "Manually reset to dry"
+		def descText = "Manually reset to dry"
 		sendEvent(
 			name:'water',
 			value:'dry',
 			isStateChange: true,
-			descriptionText: dryText
+			descriptionText: descText
 		)
-		displayDebugLog(dryText)
+		sendEvent(name: "lastDry", value: now())
+		displayInfoLog(descText)
 	}
 }
 
 // Manually override contact state to wet
 def resetToWet() {
 	if (device.currentState('water')?.value == "dry") {
-		def wetText = "Manually reset to wet"
+		def descText = "Manually reset to wet"
 		sendEvent(
 			name:'water',
 			value:'wet',
 			isStateChange: true,
-			descriptionText: wetText
+			descriptionText: descText
 		)
-		displayDebugLog(wetText)
+		sendEvent(name: "lastWet", value: now())
+		displayInfoLog(descText)
 	}
-}
-
-//Reset the batteryLastReplaced date to current date
-def resetBatteryReplacedDate(paired) {
-	def now = formatDate(true)
-	def logText = "Setting Battery Last Replaced to current date"
-	sendEvent(name: "batteryLastReplaced", value: now)
-	if (paired)
-		log.debug "${logText} for newly paired sensor"
-	displayDebugLog(logText)
 }
 
 private def displayDebugLog(message) {
 	if (debugLogging) log.debug "${device.displayName}: ${message}"
 }
 
+private def displayInfoLog(message) {
+	if (infoLogging || state.prefsSetCount != 1)
+		log.info "${device.displayName}: ${message}"
+}
+
+//Reset the batteryLastReplaced date to current date
+def resetBatteryReplacedDate(paired) {
+	def newlyPaired = paired ? " for newly paired sensor" : ""
+	sendEvent(name: "batteryLastReplaced", value: new Date())
+	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
+}
+
 // installed() runs just after a sensor is paired
 def installed() {
+	state.prefsSetCount = 0
 	displayDebugLog("Installing")
-	if (!batteryLastReplaced) resetBatteryReplacedDate(true)
 }
 
 // configure() runs after installed() when a sensor is paired
 def configure() {
-	displayDebugLog("Configuring")
+	displayInfoLog("Configuring")
+	init()
+	state.prefsSetCount = 1
 	return
 }
 
 // updated() will run every time user saves preferences
 def updated() {
-	displayDebugLog("Updating preference settings")
-	if(battReset){
-		resetBatteryReplacedDate()
-		device.updateSetting("battReset", false)
-	}
+	displayInfoLog("Updating preference settings")
+	init()
+	displayInfoLog("Info message logging enabled")
+	displayDebugLog("Debug message logging enabled")
 }
 
-def formatDate(batteryReset) {
-	def correctedTimezone = ""
-	def timeString = clockformat ? "HH:mm:ss" : "h:mm:ss aa"
-
-	// If user's hub timezone is not set, display error messages in log and events log, and set timezone to GMT to avoid errors
-	if (!(location.timeZone)) {
-		correctedTimezone = TimeZone.getTimeZone("GMT")
-		log.error "${device.displayName}: Time Zone not set, so GMT was used. Please set up your Hubitat hub location."
-		sendEvent(name: "error", value: "", descriptionText: "ERROR: Time Zone not set, so GMT was used. Please set up your Hubitat hub location.")
-	}
-	else {
-		correctedTimezone = location.timeZone
-	}
-
-	if (dateformat == "US" || dateformat == "" || dateformat == null) {
-		if (batteryReset)
-			return new Date().format("MMM dd yyyy", correctedTimezone)
-		else
-			return new Date().format("EEE MMM dd yyyy ${timeString}", correctedTimezone)
-	}
-	else if (dateformat == "UK") {
-		if (batteryReset)
-			return new Date().format("dd MMM yyyy", correctedTimezone)
-		else
-			return new Date().format("EEE dd MMM yyyy ${timeString}", correctedTimezone)
-	}
-	else {
-		if (batteryReset)
-			return new Date().format("yyyy MMM dd", correctedTimezone)
-		else
-			return new Date().format("EEE yyyy MMM dd ${timeString}", correctedTimezone)
-	}
+def init() {
+	if (!device.currentState('batteryLastReplaced')?.value)
+		resetBatteryReplacedDate(true)
 }
