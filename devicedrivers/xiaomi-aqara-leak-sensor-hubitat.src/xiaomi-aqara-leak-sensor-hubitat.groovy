@@ -62,7 +62,7 @@ metadata {
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-	def status = (description?.startsWith('zone status')) ? description - "zone status 0x000" : ""
+	def status = (description?.startsWith('zone status')) ? description[17] : ""
 	def attrId = status ? "" : description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = status ? "" : description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
