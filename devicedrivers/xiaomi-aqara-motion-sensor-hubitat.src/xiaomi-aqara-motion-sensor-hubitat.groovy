@@ -54,7 +54,7 @@ metadata {
 		//Reset to No Motion Config
 		input "motionreset", "number", title: "After motion is detected, wait ___ second(s) until resetting to inactive state. Default = 61 seconds (Hardware resets at 60 seconds)", description: "", range: "1..7200"
 		//Lux value offset
-		input "luxOffset", "decimal", title: "Lux Value Offset (Aqara model only)", description: "", range: "*..*"
+		input "luxOffset", "decimal", title: "Lux Value Offsetv", description: "", range: "*..*"
 		//Battery Voltage Range
  		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
  		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "Default = 3.0 Volts", type: "decimal", range: "2.8..3.4"
