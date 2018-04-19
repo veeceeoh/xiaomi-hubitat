@@ -78,7 +78,7 @@ def parse(String description) {
 	// Send message data to appropriate parsing function based on the type of report
 	if (cluster == "0006") {
 		// Parse open / closed status report
-		map = parseContact(Integer.parseInt(valueHex),16)
+		map = parseContact(Integer.parseInt(valueHex))
 	} else if (attrId == "0005") {
 		displayDebugLog("Reset button was short-pressed")
 		// Parse battery level from longer type of announcement message
