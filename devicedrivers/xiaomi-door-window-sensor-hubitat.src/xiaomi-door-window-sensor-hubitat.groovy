@@ -1,7 +1,7 @@
 /**
  *  Xiaomi "Original" & Aqara Door/Window Sensor
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7
+ *  Version 0.7.1
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
