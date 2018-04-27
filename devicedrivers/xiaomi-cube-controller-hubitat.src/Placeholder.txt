@@ -1,1 +1,1 @@
-Future home of Mi Cube Controller device driver
+Future home of Mi Cube Controller device driver.
