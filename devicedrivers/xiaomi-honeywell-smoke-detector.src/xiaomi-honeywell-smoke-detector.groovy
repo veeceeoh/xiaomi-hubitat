@@ -1,7 +1,7 @@
 /**
  *  Xiaomi MiJia Honeywell Smoke Detector model JTYJ-GD-01LM/BW
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.1b
+ *  Version 0.5
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -42,7 +42,6 @@ metadata {
 		capability "Smoke Detector"
 		// attributes: smoke ("detected","clear","tested")
 
-		command "enrollResponse"
 		command "resetBatteryReplacedDate"
 		command "resetToClear"
 
@@ -149,12 +148,12 @@ def resetToClear() {
 }
 
 private def displayDebugLog(message) {
-	// if (debugLogging)
+	if (debugLogging)
 		log.debug "${device.displayName}: ${message}"
 }
 
 private def displayInfoLog(message) {
-	// if (infoLogging || state.prefsSetCount != 1)
+	if (infoLogging || state.prefsSetCount != 1)
 		log.info "${device.displayName}: ${message}"
 }
 
