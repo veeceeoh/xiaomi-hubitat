@@ -24,10 +24,12 @@ These devices are not easy to pair initially. More information and help is avail
 |**Xiaomi Aqara Leak Sensor**|**Xiaomi Aqara 2 Button Smart Switch**|
 |![Xiaomi Button](images/button.jpg)|![Xiaomi Aqara Button](images/aqarabutton.jpg)|
 |**Xiaomi Button**|**Xiaomi Aqara Button**|
+|![Xiaomi mijia Honeywell Fire Alarm Detector](images/smoke.jpg)||
+|**Xiaomi MiJia Honeywell Smoke Detector**||
 
-## Device Drivers In Progress
+## Device Drivers In Beta Testing
 
 |||
 |---|---|
-|![Xiaomi Mi Cube Controller](images/micube.jpg)|![Xiaomi mijia Honeywell Fire Alarm Detector](images/smoke.jpg)|
-|**Xiaomi Mi Cube Controller**|**Xiaomi mijia Honeywell Fire Alarm Detector**|
+|![Xiaomi Mi Cube Controller](images/micube.jpg)||
+|**Xiaomi Mi Cube Controller**||
