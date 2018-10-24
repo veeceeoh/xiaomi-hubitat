@@ -166,8 +166,8 @@ private parseBattery(description) {
 		}
 	}
 	def rawVolts = rawValue / 1000
-	def minVolts = voltsmin ? voltsmin : 2.5
-	def maxVolts = voltsmax ? voltsmax : 3.0
+	def minVolts = voltsmin ? voltsmin : 2.9
+	def maxVolts = voltsmax ? voltsmax : 3.05
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
 	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
