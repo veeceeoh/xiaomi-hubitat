@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Wireless Smart Light Switch
  *  Models WXKG03LM (1 button) and WXKG02LM (2 buttons)
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.5b
+ *  Version 0.51b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -80,7 +80,7 @@ def parse(String description) {
 
 	// lastCheckin can be used with webCoRE
 	sendEvent(name: "lastCheckin", value: now())
-	sendEvent(name: "lastCheckinTime", value: formatDate())
+	sendEvent(name: "lastCheckinTime", value: new Date().toLocaleTimeString())
 
 	displayDebugLog("Parsing message: ${description}")
 
@@ -89,7 +89,7 @@ def parse(String description) {
 		// Parse Model WXKG02LM button press: endpoint 01 = left, 02 = right, 03 = both
 		map = parse02LMMessage(Integer.parseInt(endpoint))
 	} else if (cluster == "0012") {
-		// Parse Model WXKG03LM button message: value 0 = push, 1 = double-click, 2 = hold
+		// Parse Model WXKG03LM button message: value 0 = held, 1 = pushed, 2 = double-tapped
 		map = parse03LMMessage(Integer.parseInt(valueHex[2..3],16))
 	} else if (cluster == "0000" & attrId == "0005") {
 		displayDebugLog "Reset button was short-pressed"
@@ -127,10 +127,10 @@ private Map parse02LMMessage(value) {
 
 // Build event map based on type of WXKG03LM button press
 private parse03LMMessage(value) {
-	// Button message values (as integer): 0 = push, 1 = double-click, 2 = hold
-	def messageType = ["pressed", "double-tapped", "held"]
-	def eventType = ["pushed", "doubleTapped", "held"]
-	def coreType = ["Pressed", "DoubleTapped", "Held"]
+	// Button message values (as integer): value 0 = held, 1 = pushed, 2 = double-tapped
+	def messageType = ["held", "pressed", "double-tapped"]
+	def eventType = ["held", "pushed", "doubleTapped"]
+	def coreType = ["Held", "Pressed", "DoubleTapped"]
 	if (!(state.numOfButtons == 1)) {
 		sendEvent(name: "numberOfButtons", value: 1)
 		displayInfoLog("Number of buttons set to 1 for model WXKG03LM")
@@ -150,7 +150,7 @@ private parse03LMMessage(value) {
 def updateCoREEvent(coreType) {
 	displayDebugLog("Setting button${coreType} & button${coreType}Time to current date/time for webCoRE/dashboard use")
 	sendEvent(name: "button${coreType}", value: now(), descriptionText: "Updated button${coreType} (webCoRE)")
-	sendEvent(name: "button${coreType}Time", value: formatDate(), descriptionText: "Updated button${coreType}Time")
+	sendEvent(name: "button${coreType}Time", value: new Date().toLocaleTimeString(), descriptionText: "Updated button${coreType}Time")
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
