@@ -80,7 +80,7 @@ def parse(String description) {
 
 	// lastCheckin can be used with webCoRE
 	sendEvent(name: "lastCheckin", value: now())
-	sendEvent(name: "lastCheckinTime", value: formatDate()
+	sendEvent(name: "lastCheckinTime", value: formatDate())
 
 	displayDebugLog("Parsing message: ${description}")
 
@@ -91,7 +91,6 @@ def parse(String description) {
 	} else if (cluster == "0012") {
 		// Parse Model WXKG03LM button message: value 0 = push, 1 = double-click, 2 = hold
 		map = parse03LMMessage(Integer.parseInt(valueHex[2..3],16))
-		}
 	} else if (cluster == "0000" & attrId == "0005") {
 		displayDebugLog "Reset button was short-pressed"
 		// Parse battery level from longer type of announcement message
