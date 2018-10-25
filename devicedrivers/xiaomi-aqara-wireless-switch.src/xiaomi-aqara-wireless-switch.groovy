@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Wireless Smart Light Switch
  *  Models WXKG03LM (1 button) and WXKG02LM (2 buttons)
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.51b
+ *  Version 0.52b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -80,7 +80,7 @@ def parse(String description) {
 
 	// lastCheckin can be used with webCoRE
 	sendEvent(name: "lastCheckin", value: now())
-	sendEvent(name: "lastCheckinTime", value: new Date().toLocaleTimeString())
+	sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
 
 	displayDebugLog("Parsing message: ${description}")
 
@@ -115,8 +115,6 @@ private Map parse02LMMessage(value) {
 	def descText = "${pushType[value]} button${(value == 3) ? "s" : ""} pressed (Button $value pushed)"
 	displayInfoLog(descText)
 	updateCoREEvent(coreType[value])
-	if (!(state.numOfButtons == 3))
-		init()
 	return [
 		name: 'pushed',
 		value: value,
@@ -131,11 +129,6 @@ private parse03LMMessage(value) {
 	def messageType = ["held", "pressed", "double-tapped"]
 	def eventType = ["held", "pushed", "doubleTapped"]
 	def coreType = ["Held", "Pressed", "DoubleTapped"]
-	if (!(state.numOfButtons == 1)) {
-		sendEvent(name: "numberOfButtons", value: 1)
-		displayInfoLog("Number of buttons set to 1 for model WXKG03LM")
-		state.numOfButtons = 1
-	}
 	displayInfoLog("Button was ${messageType[value]}")
 	updateCoREEvent(coreType[value])
 	return [
@@ -150,7 +143,7 @@ private parse03LMMessage(value) {
 def updateCoREEvent(coreType) {
 	displayDebugLog("Setting button${coreType} & button${coreType}Time to current date/time for webCoRE/dashboard use")
 	sendEvent(name: "button${coreType}", value: now(), descriptionText: "Updated button${coreType} (webCoRE)")
-	sendEvent(name: "button${coreType}Time", value: new Date().toLocaleTimeString(), descriptionText: "Updated button${coreType}Time")
+	sendEvent(name: "button${coreType}Time", value: new Date().toLocaleString(), descriptionText: "Updated button${coreType}Time")
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
@@ -226,11 +219,14 @@ def updated() {
 }
 
 def init() {
+	def modelId = Integer.parseInt(device.getDataValue("model")[16],16)
+	def modelText = (modelId == 1) ? "03" : "02"
+	displayInfoLog("Reported sensor model is WXKG${modelText}LM ($modelId button Aqara Wireless Smart Light Switch)")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
 	if (!state.numOfButtons) {
-		sendEvent(name: "numberOfButtons", value: 3)
-		displayInfoLog("Number of buttons set to 3 (on first button press of model WXKG03LM this will be changed to 1).")
-		state.numOfButtons = 3
+		sendEvent(name: "numberOfButtons", value: modelId)
+		displayInfoLog("Number of buttons set to $modelId")
+		state.numOfButtons = modelId
 	}
 }
