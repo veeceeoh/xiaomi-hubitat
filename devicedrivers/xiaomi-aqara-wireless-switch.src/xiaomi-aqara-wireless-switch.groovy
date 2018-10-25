@@ -114,7 +114,7 @@ private Map parse02LMMessage(value) {
 	def pushType = ["", "Left", "Right", "Both"]
 	def descText = "${pushType[value]} button${(value == 3) ? "s" : ""} pressed (Button $value pushed)"
 	displayInfoLog(descText)
-	updateCoREEvent(coreType[value])
+	updateCoREEvent("Pressed")
 	return [
 		name: 'pushed',
 		value: value,
