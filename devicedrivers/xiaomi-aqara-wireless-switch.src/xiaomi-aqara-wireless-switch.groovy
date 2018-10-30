@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Wireless Smart Light Switch
  *  Models WXKG03LM (1 button) and WXKG02LM (2 buttons)
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.52b
+ *  Version 0.55b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -114,7 +114,7 @@ private Map parse02LMMessage(value) {
 	def pushType = ["", "Left", "Right", "Both"]
 	def descText = "${pushType[value]} button${(value == 3) ? "s" : ""} pressed (Button $value pushed)"
 	displayInfoLog(descText)
-	updateCoREEvent("Pressed")
+	updateDateTimeStamp("Pressed")
 	return [
 		name: 'pushed',
 		value: value,
@@ -128,9 +128,9 @@ private parse03LMMessage(value) {
 	// Button message values (as integer): value 0 = held, 1 = pushed, 2 = double-tapped
 	def messageType = ["held", "pressed", "double-tapped"]
 	def eventType = ["held", "pushed", "doubleTapped"]
-	def coreType = ["Held", "Pressed", "DoubleTapped"]
+	def timeStampType = ["Held", "Pressed", "DoubleTapped"]
 	displayInfoLog("Button was ${messageType[value]}")
-	updateCoREEvent(coreType[value])
+	updateDateTimeStamp(timeStampType[value])
 	return [
 		name: eventType[value],
 		value: 1,
@@ -139,11 +139,11 @@ private parse03LMMessage(value) {
 	]
 }
 
-// Generate buttonPressed(Time), buttonHeld(Time), or buttonReleased(Time) event for webCoRE/dashboard use
-def updateCoREEvent(coreType) {
-	displayDebugLog("Setting button${coreType} & button${coreType}Time to current date/time for webCoRE/dashboard use")
-	sendEvent(name: "button${coreType}", value: now(), descriptionText: "Updated button${coreType} (webCoRE)")
-	sendEvent(name: "button${coreType}Time", value: new Date().toLocaleString(), descriptionText: "Updated button${coreType}Time")
+// Generate buttonPressed(Time), buttonHeld(Time), or buttonReleased(Time) event for webCoRE/Hubitat dashboard use
+def updateDateTimeStamp(timeStampType) {
+	displayDebugLog("Setting button${timeStampType} & button${timeStampType}Time to current date/time for webCoRE/dashboard use")
+	sendEvent(name: "button${timeStampType}", value: now(), descriptionText: "Updated button${timeStampType} (webCoRE)")
+	sendEvent(name: "button${timeStampType}Time", value: new Date().toLocaleString(), descriptionText: "Updated button${timeStampType}Time")
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
