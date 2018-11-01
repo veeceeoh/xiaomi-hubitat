@@ -1,7 +1,7 @@
 /**
  *  Xiaomi "Original" & Aqara Door/Window Sensor
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7.1
+ *  Version 0.7.2b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -100,17 +100,21 @@ def parse(String description) {
 
 // Parse open/close report
 private parseContact(closedOpen) {
-	def value = ["closed", "open"]
-	def desc = ["closed", "opened"]
-	def coreEvent = ["lastClosed", "lastOpened"]
-	displayDebugLog("Setting ${coreEvent[closedOpen]} to current date/time for webCoRE")
-	sendEvent(name: coreEvent[closedOpen], value: now(), descriptionText: "Updated ${coreEvent[closedOpen]} (webCoRE)")
-	return [
-		name: 'contact',
-		value: value[closedOpen],
-		isStateChange: true,
-		descriptionText: "Contact was ${desc[closedOpen]}"
-	]
+	if (state.closedOpen != closedOpen) {
+		def value = ["closed", "open"]
+		def desc = ["closed", "opened"]
+		def coreEvent = ["lastClosed", "lastOpened"]
+		displayDebugLog("Setting ${coreEvent[closedOpen]} to current date/time for webCoRE")
+		sendEvent(name: coreEvent[closedOpen], value: now(), descriptionText: "Updated ${coreEvent[closedOpen]} (webCoRE)")
+		state.closedOpen = closedOpen
+		return [
+			name: 'contact',
+			value: value[closedOpen],
+			isStateChange: true,
+			descriptionText: "Contact was ${desc[closedOpen]}"
+		]
+	} else
+		return [:]
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
@@ -198,4 +202,6 @@ def updated() {
 def init() {
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
+	if (!state.openClose)
+		state.openClose = 2
 }
