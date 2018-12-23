@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Aqara Button - models WXKG11LM / WXKG12LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.5
+ *  Version 0.6
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -14,21 +14,29 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *  Based on SmartThings device handler code by a4refillpad
- *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, veeceeoh, & xtianpaiva
  *  Reworked and additional code for use with Hubitat Elevation hub by veeceeoh
+ *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, guyeeba, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, veeceeoh, & xtianpaiva
  *
  *  Notes on capabilities of the different models:
- *  Models WXKG11LM
- *    - Only single press is supported, sent as button 1 "pushed" event
- *  Model WXKG11LM:
+ *  Model WXKG11LM (original revision)
+ *    - Single click results in button 1 "pushed" event
+ *    - Double-click results in button 2 "pushed" event
+ *    - Triple-click results in button 3 "pushed" event
+ *    - Quadruple-click results in button 4 "pushed" event
+ *    - Button release is automatic, based on user-adjustable timer, results in button 0 "pushed" event
+ *  Model WXKG11LM (new revision):
  *    - Single click results in button 1 "pushed" event
  *    - Hold for longer than 400ms results in button 1 "held" event
- *    - Double click results in button 2 "pushed" event
- *    - Shaking the button results in button 3 "pushed" event
- *    - Single or double click results in custom "lastPressedCoRE" event for webCoRE use
- *    - Release of button results in "lastReleasedCoRE" event for webCoRE use
+ *    - Release of button results in button 1 "released" event
+ *    - Double click results in button 1 "doubleTapped" event
+ *  Model WXKG12LM:
+ *    - Single click results in button 1 "pushed" event
+ *    - Hold for longer than 400ms results in button 1 "held" event
+ *    - Release of button results in button 1 "released" event
+ *    - Double click results in button 1 "doubleTapped" event
+ *    - Shaking the button results in button 2 "pushed" event
  *
-  *  Known issues:
+ *  Known issues:
  *  + Xiaomi devices send reports based on changes, and a status report every 50-60 minutes. These settings cannot be adjusted.
  *  + The battery level / voltage is not reported at pairing. Wait for the first status report, 50-60 minutes after pairing.
  *    However, the Aqara Button battery level can be retrieved immediately with a short-press of the reset button.
@@ -44,20 +52,28 @@
 
 metadata {
 	definition (name: "Xiaomi Aqara Button", namespace: "veeceeoh", author: "bspranger") {
-		capability "PushableButton"
-		capability "HoldableButton"
-		capability "Sensor"
 		capability "Battery"
+		capability "DoubleTapableButton"
+		capability "HoldableButton"
+		capability "PushableButton"
+		capability "ReleasableButton"
+		capability "Sensor"
 
-		attribute "lastCheckin", "String"
+		attribute "lastCheckinEpoch", "String"
+		attribute "lastCheckinTime", "String"
 		attribute "batteryLastReplaced", "String"
-		attribute "buttonPressed", "String"
-		attribute "buttonHeld", "String"
-		attribute "buttonReleased", "String"
+		attribute "buttonPressedEpoch", "String"
+		attribute "buttonPressedTime", "String"
+		attribute "buttonHeldEpoch", "String"
+		attribute "buttonHeldTime", "String"
+		attribute "buttonReleasedEpoch", "String"
+		attribute "buttonReleasedTime", "String"
 
-		// Aqara Button - original revision - model WXKG11LM
+		// Aqara Button - model WXKG11LM (original revision)
 		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,FFFF,0006", outClusters: "0000,0004,FFFF", manufacturer: "LUMI", model: "lumi.sensor_switch.aq2"
-		// Aqara Button - new revision - model WXKG12LM
+		// Aqara Button - model WXKG11LM (new revision)
+		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,0012,0003", outClusters: "0000", manufacturer: "LUMI", model: "lumi.remote.b1acn01"
+		// Aqara Button - model WXKG12LM
 		fingerprint endpointId: "01", profileId: "0104", inClusters: "0000,0012,0006,0001", outClusters: "0000", manufacturer: "LUMI", model: "lumi.sensor_switch.aq3"
 
 		command "resetBatteryReplacedDate"
@@ -65,10 +81,10 @@ metadata {
 
 	preferences {
 		//Button Config
-		input "releaseTime", "number", title: "MODEL WXKG11LM ONLY: Delay after a single press to send 'release' (button 0 pushed) event", description: "Default = 2 seconds", range: "1..60"
+		input "releaseTime", "number", title: "Model WXKG11LM - ORIGINAL revision ONLY: Delay after a single press to send 'release' (button 0 pushed) event", description: "Default = 2 seconds", range: "1..60"
 		//Battery Voltage Range
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", description: "Default = 2.5 Volts", type: "decimal", range: "2..2.7"
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", description: "Default = 3.0 Volts", type: "decimal", range: "2.8..3.4"
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
 		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
@@ -82,18 +98,24 @@ def parse(String description) {
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
 
-	// lastCheckin can be used with webCoRE
-	sendEvent(name: "lastCheckin", value: now())
+	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
+	sendEvent(name: "lastCheckinEpoch", value: now())
+	sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
 
 	displayDebugLog("Parsing message: ${description}")
 
 	// Send message data to appropriate parsing function based on the type of report
 	if (cluster == "0006") {
-		// Model WXKG11LM only
+		// Model WXKG11LM (original revision) only
 		map = parse11LMMessage(attrId, Integer.parseInt(valueHex))
 	} else if (cluster == "0012") {
-		// Model WXKG12LM only
-		map = parse12LMMessage(Integer.parseInt(valueHex[2..3],16))
+		if (device.data.model.startsWith("lumi.remote.b1acn01")) {
+			// Model WXKG11LM (new revision) only
+			map = parse11LMNewMessage(Integer.parseInt(valueHex[2..3],16))
+		} else {
+			// Model WXKG12LM only
+			map = parse12LMMessage(Integer.parseInt(valueHex[2..3],16))
+		}
 	} else if (cluster == "0000" & attrId == "0005") {
 		displayInfoLog("Reset button was short-pressed")
 		// Parse battery level from longer type of announcement message
@@ -112,11 +134,10 @@ def parse(String description) {
 		return [:]
 }
 
-// Parse WXKG11LM button message (press, double-click, triple-click, quad-click, and release)
+// Parse WXKG11LM (original revision) button message: press, double-click, triple-click, quad-click, and release
 private parse11LMMessage(attrId, value){
 	def result = [:]
 	releaseTime = (releaseTime > 0) ? releaseTime : 2
-
 	if ((attrId == "0000") && (value == 1001 || value == 1000)) {
 		result = map11LMEvent(1)
 		runIn(releaseTime, releaseButton)
@@ -126,46 +147,62 @@ private parse11LMMessage(attrId, value){
 	return result
 }
 
-// Build event map based on type of WXKG11LM click
+// Build event map based on type of WXKG11LM (original revision) click
 private Map map11LMEvent(value) {
-	def clickType = ["released", "single-clicked", "double-clicked", "triple-clicked", "quadruple-clicked"]
-	def coreType = (value == 0) ? "Released" : "Pressed"
+	def messageType = ["released", "single-clicked", "double-clicked", "triple-clicked", "quadruple-clicked"]
+	def timeStampType = (value == 0) ? "Released" : "Pressed"
 	if (value <= 4) {
-		displayInfoLog("Button was ${clickType[value]} (Button $value pushed)")
-		updateCoREEvent(coreType)
+		displayInfoLog("Button was ${messageType[value]} (Button $value pushed)")
+		updateDateTimeStamp(timeStampType)
 		return [
 			name: 'pushed',
 			value: value,
 			isStateChange: true,
-			descriptionText: "Button was ${clickType[value]}"
+			descriptionText: "Button was ${messageType[value]}"
 		]
 	} else {
 		return [:]
 	}
 }
 
-// Build event map based on type of WXKG12LM action
-private parse12LMMessage(value) {
-	// Button message values (as integer): 1 = push, 2 = double-click, 16 = hold, 17 = release, 18 = shake
-	value = (value < 3) ? value : (value - 13)
-	def messageType = ["", "single-clicked", "double-clicked", "held", "released", "shaken"]
-	def eventType = (value == 3) ? "held" : "pushed"
-	def coreType = ["", "Pressed", "Pressed", "Held", "Released", "Pressed"]
-	def buttonNum = [1, 1, 2, 1, 0, 3]
-	displayInfoLog("Button was ${messageType[value]} (Button ${buttonNum[value]} $eventType)")
-	updateCoREEvent(coreType[value])
+// Build event map based on type of WXKG11LM (new revision) action
+private parse11LMNewMessage(value) {
+	// Button message values (as integer): 0: hold, 1 = push, 2 = double-click, 255 = release
+	def messageType = [0: "held", 1: "single-clicked", 2: "double-clicked", 255: "released"]
+	def eventType = [0: "held", 1: "pushed", 2: "doubleTapped", 255: "released"]
+	def timeStampType = [0: "Held", 1: "Pressed", 2: "Pressed", 255: "Released"]
+	displayInfoLog("Button was ${messageType[value]} (Button 1 ${eventType[value]})")
+	updateDateTimeStamp(timeStampType[value])
 	return [
-		name: eventType,
-		value: buttonNum[value],
+		name: eventType[value],
+		value: 1,
 		isStateChange: true,
 		descriptionText: "Button was ${messageType[value]}"
 	]
 }
 
-// Generate buttonPressed, buttonHeld, or buttonReleased event for webCoRE use
-def updateCoREEvent(coreType) {
-	displayDebugLog("Setting button${coreType} to current date/time for webCoRE")
-	sendEvent(name: "button${coreType}", value: now(), descriptionText: "Updated button${coreType} (webCoRE)")
+// Build event map based on type of WXKG12LM action
+private parse12LMMessage(value) {
+	// Button message values (as integer): 1 = push, 2 = double-click, 16 = hold, 17 = release, 18 = shake
+	def messageType = [1: "single-clicked", 2: "double-clicked", 16: "held", 17: "released", 18: "shaken"]
+	def eventType = [1: "pushed", 2: "doubleTapped", 16: "held", 17: "released", 18: "pushed"]
+	def timeStampType = [1: "Pressed", 2: "Pressed", 16: "Held", 17: "Released", 18: "Pressed"]
+	def buttonNum = (value == 18) ? 2 : 1
+	displayInfoLog("Button was ${messageType[value]} (Button ${buttonNum} $eventType[value])")
+	updateDateTimeStamp(timeStampType[value])
+	return [
+		name: eventType[value],
+		value: buttonNum,
+		isStateChange: true,
+		descriptionText: "Button was ${messageType[value]}"
+	]
+}
+
+// Generate buttonPressedEpoch/Time), buttonHeldEpoch/Time, or buttonReleasedEpoch/Time event for Epoch time/date app or Hubitat dashboard use
+def updateDateTimeStamp(timeStampType) {
+	displayDebugLog("Setting button${timeStampType}Epoch and button${timeStampType}Time to current date/time")
+	sendEvent(name: "button${timeStampType}Epoch", value: now(), descriptionText: "Updated button${timeStampType}Epoch")
+	sendEvent(name: "button${timeStampType}Time", value: new Date().toLocaleString(), descriptionText: "Updated button${timeStampType}Time")
 }
 
 def releaseButton() {
@@ -187,8 +224,8 @@ private parseBattery(description) {
 		}
 	}
 	def rawVolts = rawValue / 1000
-	def minVolts = voltsmin ? voltsmin : 2.5
-	def maxVolts = voltsmax ? voltsmax : 3.0
+	def minVolts = voltsmin ? voltsmin : 2.9
+	def maxVolts = voltsmax ? voltsmax : 3.05
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
 	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
@@ -235,7 +272,7 @@ def hold() {
 def installed() {
 	state.prefsSetCount = 0
 	displayInfoLog("Installing")
-	sendEvent(name: "numberOfButtons", value: 4)
+	setNumButtons()
 }
 
 // configure() runs after installed() when a sensor is paired or reconnected
@@ -243,8 +280,7 @@ def configure() {
 	displayInfoLog("Configuring")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
-	sendEvent(name: "numberOfButtons", value: 4)
-	displayInfoLog("Number of buttons = 4 (model WXKG12LM only uses buttons 1-3)")
+	setNumButtons()
 	state.prefsSetCount = 1
 	return
 }
@@ -254,7 +290,23 @@ def updated() {
 	displayInfoLog("Updating preference settings")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
-	sendEvent(name: "numberOfButtons", value: 4)
+	setNumButtons()
 	displayInfoLog("Info message logging enabled")
 	displayDebugLog("Debug message logging enabled")
+}
+
+def setNumButtons() {
+	if (!state.numButtons) {
+		if (device.data.model.startsWith("lumi.sensor_switch.aq2")) {
+			displayInfoLog("Model is WXKG11LM (original revision). Number of buttons set to 4.")
+			state.numButtons = 4
+		} else if (device.data.model.startsWith("lumi.remote.b1acn01")) {
+			displayInfoLog("Model is WXKG11LM (new revision). Number of buttons set to 1.")
+			state.numButtons = 4
+		} else {
+			displayInfoLog("Model is WXKG12LM. Number of buttons set to 2.")
+			state.numButtons = 2
+		}
+		sendEvent(name: "numberOfButtons", value: state.numButtons)
+	}
 }
