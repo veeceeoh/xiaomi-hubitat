@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Aqara Button - models WXKG11LM / WXKG12LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.55b
+ *  Version 0.6
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -59,14 +59,14 @@ metadata {
 		capability "ReleasableButton"
 		capability "Sensor"
 
-		attribute "lastCheckin", "String"
+		attribute "lastCheckinEpoch", "String"
 		attribute "lastCheckinTime", "String"
 		attribute "batteryLastReplaced", "String"
-		attribute "buttonPressed", "String"
+		attribute "buttonPressedEpoch", "String"
 		attribute "buttonPressedTime", "String"
-		attribute "buttonHeld", "String"
+		attribute "buttonHeldEpoch", "String"
 		attribute "buttonHeldTime", "String"
-		attribute "buttonReleased", "String"
+		attribute "buttonReleasedEpoch", "String"
 		attribute "buttonReleasedTime", "String"
 
 		// Aqara Button - model WXKG11LM (original revision)
@@ -81,7 +81,7 @@ metadata {
 
 	preferences {
 		//Button Config
-		input "releaseTime", "number", title: "MODEL WXKG11LM ONLY: Delay after a single press to send 'release' (button 0 pushed) event", description: "Default = 2 seconds", range: "1..60"
+		input "releaseTime", "number", title: "Model WXKG11LM - ORIGINAL revision ONLY: Delay after a single press to send 'release' (button 0 pushed) event", description: "Default = 2 seconds", range: "1..60"
 		//Battery Voltage Range
 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
@@ -98,8 +98,8 @@ def parse(String description) {
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
 
-	// lastCheckin(Time) can be used with webCoRE/Hubitat dashboard
-	sendEvent(name: "lastCheckin", value: now())
+	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
+	sendEvent(name: "lastCheckinEpoch", value: now())
 	sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
 
 	displayDebugLog("Parsing message: ${description}")
@@ -198,10 +198,10 @@ private parse12LMMessage(value) {
 	]
 }
 
-// Generate buttonPressed(Time), buttonHeld(Time), or buttonReleased(Time) event for webCoRE/Hubitat dashboard use
+// Generate buttonPressedEpoch/Time), buttonHeldEpoch/Time, or buttonReleasedEpoch/Time event for Epoch time/date app or Hubitat dashboard use
 def updateDateTimeStamp(timeStampType) {
-	displayDebugLog("Setting button${timeStampType} to current date/time for webCoRE")
-	sendEvent(name: "button${timeStampType}", value: now(), descriptionText: "Updated button${timeStampType} (webCoRE)")
+	displayDebugLog("Setting button${timeStampType}Epoch and button${timeStampType}Time to current date/time")
+	sendEvent(name: "button${timeStampType}Epoch", value: now(), descriptionText: "Updated button${timeStampType}Epoch")
 	sendEvent(name: "button${timeStampType}Time", value: new Date().toLocaleString(), descriptionText: "Updated button${timeStampType}Time")
 }
 
