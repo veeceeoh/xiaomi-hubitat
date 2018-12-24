@@ -1,8 +1,8 @@
 /*
  *  Xiaomi Aqara Wireless Smart Light Switch
- *  Models WXKG03LM (1 button) and WXKG02LM (2 buttons)
+ *  2016 & 2018 revisions of models WXKG03LM (1 button) and WXKG02LM (2 buttons)
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.55b
+ *  Version 0.56b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -19,13 +19,26 @@
  *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, veeceeoh, & xtianpaiva
  *
  *  Notes on capabilities of the different models:
- *  Model WXKG03LM (1 button):
+ *  Model WXKG03LM (1 button) - 2016 Revision:
+ *    - Single press results in button 1 "pushed" event
+ *  Model WXKG03LM (1 button) - 2018 Revision:
  *    - Single press results in button 1 "pushed" event
  *    - Double click results in button 1 "doubleTapped" event
- *    - Single click results in button 1 "held" event
- *  Model WXKG02LM (2 button):
- *    - Single click results in button 1 "pushed" event
  *    - Hold for longer than 400ms results in button 1 "held" event
+ *  Model WXKG02LM (2 button) - 2016 Revision:
+ *    - Single press of left button results in button 1 "pushed" event
+ *    - Single press of right button results in button 2 "pushed" event
+ *    - Single press of both buttons results in button 3 "pushed" event
+ *  Model WXKG02LM (2 button) - 2018 Revision:
+ *    - Single press of left button results in button 1 "pushed" event
+ *    - Single press of right button results in button 2 "pushed" event
+ *    - Single press of both buttons results in button 3 "pushed" event
+ *    - Double click of left button results in button 1 "doubleTapped" event
+ *    - Double click of right button results in button 2 "doubleTapped" event
+ *    - Double click of both buttons results in button 3 "doubleTapped" event
+ *    - Hold of left button for longer than 400ms results in button 1 "held" event
+ *    - Hold of right button for longer than 400ms results in button 2 "held" event
+ *    - Hold of both buttons for longer than 400ms results in button 3 "held" event
  *
  *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
  *
@@ -40,22 +53,26 @@ metadata {
 		capability "PushableButton"
 		capability "Sensor"
 
-		attribute "lastCheckin", "String"
+		attribute "lastCheckinEpoch", "String"
 		attribute "lastCheckinTime", "String"
 		attribute "batteryLastReplaced", "String"
-		attribute "buttonPressed", "String"
+		attribute "buttonPressedEpoch", "String"
 		attribute "buttonPressedTime", "String"
-		attribute "buttonDoubleTapped", "String"
+		attribute "buttonDoubleTappedEpoch", "String"
 		attribute "buttonDoubleTappedTime", "String"
-		attribute "buttonHeld", "String"
+		attribute "buttonHeldEpoch", "String"
 		attribute "buttonHeldTime", "String"
 
-		// Aqara Wireless Smart Light Switch - one button - model WXKG03LM
+		// Aqara Wireless Smart Light Switch - one button - model WXKG03LM - 2016 Revision
 		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw1lu"
 		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw1"
-		// Aqara Wireless Smart Light Switch - two button - model WXKG02LM
+		// Aqara Wireless Smart Light Switch - two button - model WXKG02LM - 2016 Revision
 		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw2Un"
 		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw2"
+		// Aqara Wireless Smart Light Switch - one button - model WXKG03LM - 2018 Revision
+		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.remote.b186acn01"
+		// Aqara Wireless Smart Light Switch - two button - model WXKG02LM - 2018 Revision
+		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.remote.b286acn01"
 
 		command "resetBatteryReplacedDate"
 	}
@@ -78,8 +95,8 @@ def parse(String description) {
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
 
-	// lastCheckin can be used with webCoRE
-	sendEvent(name: "lastCheckin", value: now())
+	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
+	sendEvent(name: "lastCheckinEpoch", value: now())
 	sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
 
 	displayDebugLog("Parsing message: ${description}")
@@ -139,10 +156,10 @@ private parse03LMMessage(value) {
 	]
 }
 
-// Generate buttonPressed(Time), buttonHeld(Time), or buttonReleased(Time) event for webCoRE/Hubitat dashboard use
+// Generate buttonPressedEpoch/Time, buttonHeldEpoch/Time, or buttonReleasedEpoch/Time event for Epoch time/date app or Hubitat dashboard use
 def updateDateTimeStamp(timeStampType) {
-	displayDebugLog("Setting button${timeStampType} & button${timeStampType}Time to current date/time for webCoRE/dashboard use")
-	sendEvent(name: "button${timeStampType}", value: now(), descriptionText: "Updated button${timeStampType} (webCoRE)")
+	displayDebugLog("Setting button${timeStampType}Epoch and button${timeStampType}Time to current date/time")
+	sendEvent(name: "button${timeStampType}Epoch", value: now(), descriptionText: "Updated button${timeStampType}Epoch")
 	sendEvent(name: "button${timeStampType}Time", value: new Date().toLocaleString(), descriptionText: "Updated button${timeStampType}Time")
 }
 
