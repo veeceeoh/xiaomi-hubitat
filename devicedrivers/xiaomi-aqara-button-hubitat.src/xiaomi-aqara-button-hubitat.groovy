@@ -51,7 +51,7 @@
  */
 
 metadata {
-	definition (name: "Xiaomi Aqara Button", namespace: "veeceeoh", author: "bspranger") {
+	definition (name: "Aqara Button", namespace: "veeceeoh", author: "veeceeoh") {
 		capability "Battery"
 		capability "DoubleTapableButton"
 		capability "HoldableButton"
@@ -70,11 +70,11 @@ metadata {
 		attribute "buttonReleasedTime", "String"
 
 		// Aqara Button - model WXKG11LM (original revision)
-		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,FFFF,0006", outClusters: "0000,0004,FFFF", manufacturer: "LUMI", model: "lumi.sensor_switch.aq2"
+		fingerprint profileId: "0104", inClusters: "0000,FFFF,0006", outClusters: "0000,0004,FFFF", manufacturer: "LUMI", model: "lumi.sensor_switch.aq2", deviceJoinName: "Aqara Button WXKG11LM r1"
 		// Aqara Button - model WXKG11LM (new revision)
-		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000,0012,0003", outClusters: "0000", manufacturer: "LUMI", model: "lumi.remote.b1acn01"
+		fingerprint profileId: "0104", inClusters: "0000,0012,0003", outClusters: "0000", manufacturer: "LUMI", model: "lumi.remote.b1acn01", deviceJoinName: "Aqara Button WXKG11LM r2"
 		// Aqara Button - model WXKG12LM
-		fingerprint endpointId: "01", profileId: "0104", inClusters: "0000,0012,0006,0001", outClusters: "0000", manufacturer: "LUMI", model: "lumi.sensor_switch.aq3"
+		fingerprint profileId: "0104", inClusters: "0000,0012,0006,0001", outClusters: "0000", manufacturer: "LUMI", model: "lumi.sensor_switch.aq3", deviceJoinName: "Aqara Button WXKG12LM"
 
 		command "resetBatteryReplacedDate"
 	}
@@ -188,7 +188,7 @@ private parse12LMMessage(value) {
 	def eventType = [1: "pushed", 2: "doubleTapped", 16: "held", 17: "released", 18: "pushed"]
 	def timeStampType = [1: "Pressed", 2: "Pressed", 16: "Held", 17: "Released", 18: "Pressed"]
 	def buttonNum = (value == 18) ? 2 : 1
-	displayInfoLog("Button was ${messageType[value]} (Button ${buttonNum} $eventType[value])")
+	displayInfoLog("Button was ${messageType[value]} (Button ${buttonNum} ${eventType[value]})")
 	updateDateTimeStamp(timeStampType[value])
 	return [
 		name: eventType[value],
@@ -198,7 +198,7 @@ private parse12LMMessage(value) {
 	]
 }
 
-// Generate buttonPressedEpoch/Time), buttonHeldEpoch/Time, or buttonReleasedEpoch/Time event for Epoch time/date app or Hubitat dashboard use
+// Generate buttonPressedEpoch/Time, buttonHeldEpoch/Time, or buttonReleasedEpoch/Time event for Epoch time/date app or Hubitat dashboard use
 def updateDateTimeStamp(timeStampType) {
 	displayDebugLog("Setting button${timeStampType}Epoch and button${timeStampType}Time to current date/time")
 	sendEvent(name: "button${timeStampType}Epoch", value: now(), descriptionText: "Updated button${timeStampType}Epoch")
@@ -256,31 +256,16 @@ def resetBatteryReplacedDate(paired) {
 	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
 }
 
-// this call is here to avoid Groovy errors when the Push command is used
-// it is empty because the Xioami button is non-controllable
-def push() {
-	displayDebugLog("No action taken on Push Command. This button cannot be controlled.")
-}
-
-// this call is here to avoid Groovy errors when the Hold command is used
-// it is empty because the Xioami button is non-controllable
-def hold() {
-	displayDebugLog("No action taken on Hold Command. This button cannot be controlled!")
-}
-
 // installed() runs just after a sensor is paired
 def installed() {
 	state.prefsSetCount = 0
 	displayInfoLog("Installing")
-	setNumButtons()
 }
 
 // configure() runs after installed() when a sensor is paired or reconnected
 def configure() {
 	displayInfoLog("Configuring")
-	if (!device.currentState('batteryLastReplaced')?.value)
-		resetBatteryReplacedDate(true)
-	setNumButtons()
+	init()
 	state.prefsSetCount = 1
 	return
 }
@@ -288,25 +273,29 @@ def configure() {
 // updated() runs every time user saves preferences
 def updated() {
 	displayInfoLog("Updating preference settings")
-	if (!device.currentState('batteryLastReplaced')?.value)
-		resetBatteryReplacedDate(true)
-	setNumButtons()
+	init()
 	displayInfoLog("Info message logging enabled")
 	displayDebugLog("Debug message logging enabled")
 }
 
-def setNumButtons() {
+def init() {
+	def nButtons = 2
+	def modelText = "WXKG12LM"
+	def zigbeeModel = device.data.model
+	displayInfoLog("Reported ZigBee model ID is $zigbeeModel")
+	if (!device.currentState('batteryLastReplaced')?.value)
+		resetBatteryReplacedDate(true)
+	if (zigbeeModel.startsWith("lumi.sensor_switch.aq2")) {
+		modelText = "WXKG11LM (original revision)."
+		nButtons = 4
+	} else if (zigbeeModel.startsWith("lumi.remote.b1acn01")) {
+		modelText = "WXKG11LM (new revision)."
+		nButtons = 1
+	}
+	displayInfoLog("Reported device model is $modelText.")
 	if (!state.numButtons) {
-		if (device.data.model.startsWith("lumi.sensor_switch.aq2")) {
-			displayInfoLog("Model is WXKG11LM (original revision). Number of buttons set to 4.")
-			state.numButtons = 4
-		} else if (device.data.model.startsWith("lumi.remote.b1acn01")) {
-			displayInfoLog("Model is WXKG11LM (new revision). Number of buttons set to 1.")
-			state.numButtons = 4
-		} else {
-			displayInfoLog("Model is WXKG12LM. Number of buttons set to 2.")
-			state.numButtons = 2
-		}
-		sendEvent(name: "numberOfButtons", value: state.numButtons)
+		sendEvent(name: "numberOfButtons", value: nButtons)
+		displayInfoLog("Number of buttons set to $nButtons")
+		state.numButtons = nButtons
 	}
 }
