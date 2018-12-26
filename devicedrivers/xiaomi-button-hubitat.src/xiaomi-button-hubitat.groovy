@@ -1,7 +1,7 @@
 /**
  *  Xiaomi "Original" Button
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.8
+ *  Version 0.85b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
