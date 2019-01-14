@@ -31,5 +31,5 @@ These devices are not easy to pair initially. More information and help is avail
 
 |||
 |---|---|
-|![Xiaomi Mi Cube Controller](images/micube.jpg)||
-|**Xiaomi Mi Cube Controller**||
+|![Xiaomi Mi Cube Controller](images/micube.jpg)|![Xiaomi Aqara Button](images/aqaravibration.jpg)|
+|**Xiaomi Mi Cube Controller**|**Aqara Vibration Sensor**|
