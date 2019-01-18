@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Vibration Sensor
  *  Model DJT11LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.5b
+ *  Version 0.7b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -41,22 +41,18 @@ metadata {
 		capability "PushableButton"
 		capability "Refresh"
 		capability "Sensor"
-		capability "Three Axis"
 
 		attribute "activityLevel", "String"
-		attribute "angleX", "number"
-		attribute "angleY", "number"
-		attribute "angleZ", "number"
-		attribute "batteryRuntime", "String"
-		attribute "lastCheckin", "String"
+		attribute "batteryLastReplaced", "String"
+		attribute "lastCheckinEpoch", "String"
 		attribute "lastCheckinTime", "Date"
-		attribute "lastDrop", "String"
+		attribute "lastDropEpoch", "String"
 		attribute "lastDropTime", "Date"
-		attribute "lastStationary", "String"
+		attribute "lastStationaryEpoch", "String"
 		attribute "lastStationaryTime", "Date"
-		attribute "lastTilt", "String"
+		attribute "lastTiltEpoch", "String"
 		attribute "lastTiltTime", "Date"
-		attribute "lastVibration", "String"
+		attribute "lastVibrationEpoch", "String"
 		attribute "lastVibrationTime", "Date"
 		attribute "sensitivityLevel", "String"
 		attribute "sensorStatus", "enum", ["vibrating", "tilted", "dropped", "Stationary"]
@@ -64,18 +60,22 @@ metadata {
 
 		fingerprint profileId: "0104", deviceId: "000A", inClusters: "0000,0003,0019,0101", outClusters: "0000,0004,0003,0005,0019,0101", manufacturer: "LUMI", model: "lumi.vibration.aq1"
 
-		command "resetBatteryRuntime"
-		command "changeSensitivity"
+		command "resetBatteryReplacedDate"
 		command "setOpenPosition"
 		command "setClosedPosition"
 	}
 
 	preferences {
 		//Reset to No Motion Config
-		input "motionreset", "number", title: "", description: "Number of seconds to reset Motion = Active when sensor detects vibration/shock (default = 65)", range: "1..7200"
+		input "motionreset", "number", title: "After vibration/movement is detected, wait ___ second(s) until resetting 'motion active' to 'inactive'. (default = 65)", description: "", range: "1..7200"
+		//3-Axis Angle Open/Close Position Range Margin of Error Config
+		input name: "marginOfError", title: "Margin of error to use comparing sensor position to user-set open/close positions (default = 10.0)", description: "", type: "decimal", range: "0..100"
 		//Battery Voltage Range
 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
+		//Date/Time Stamp Events Config
+		input name: "lastCheckinEnable", type: "bool", title: "Enable custom date/time stamp events for lastCheckin", description: ""
+		input name: "otherDateTimeEnable", type: "bool", title: "Enable custom date/time stamp events for lastDrop, lastStationary, lastTilt, and lastVibration", description: ""
 		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
@@ -84,16 +84,19 @@ metadata {
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-    displayDebugLog "Parsing sensor message: ${description}"
+	displayDebugLog "Parsing sensor message: ${description}"
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def value = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	def eventType
 	Map map = [:]
+	def cmds = []
 
-	// lastCheckin can be used with webCoRE and lastCheckinTime used with Hubitat Dashboard
-	sendEvent(name: "lastCheckin", value: now())
-	sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
+	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
+	if (lastCheckinEnable) {
+		sendEvent(name: "lastCheckinEpoch", value: now())
+		sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
+	}
 
 	// Send message data to appropriate parsing function based on the type of report
 	if (attrId == "0055") {
@@ -106,14 +109,15 @@ def parse(String description) {
 		}
 		map = mapSensorEvent(eventType)
 	} else if (attrId == "0508") {
-		// Handles XYZ Accelerometer values
-		map = convertAccelValues(value)
+		// Handles XYZ Accelerometer values to determine position
+		convertAccelValues(value)
 	} else if (attrId == "0505") {
+		// Handles recent activity level value reports
 		map = mapActivityLevel(value)
 	} else if (cluster == "0000" & attrId == "0005") {
 		displayDebugLog "Reset button was short-pressed"
-		// Parse battery level from longer type of announcement message
-		map = (value.size() > 60) ? parseBattery(value.split('FF42')[1]) : [:]
+		// Change sensitivity level
+		cmds = changeSensitivity()
 	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
 		// Parse battery level from hourly announcement message
 		map = (value.size() > 30) ? parseBattery(value) : [:]
@@ -124,6 +128,9 @@ def parse(String description) {
 	if (map != [:]) {
 		displayDebugLog("Creating event $map")
 		return createEvent(map)
+	} else if (cmds != []) {
+		displayDebugLog("Sending commands $cmds")
+		return cmds
 	} else
 		return [:]
 }
@@ -136,14 +143,14 @@ private Map convertAccelValues(value) {
 	float Psi = Math.round(Math.atan(x/Math.sqrt(z*z+y*y))*1800/Math.PI)/10
 	float Phi = Math.round(Math.atan(y/Math.sqrt(x*x+z*z))*1800/Math.PI)/10
 	float Theta = Math.round(Math.atan(z/Math.sqrt(x*x+y*y))*1800/Math.PI)/10
-	def descText = ": Calculated angles are Psi = ${Psi}°, Phi = ${Phi}°, Theta = ${Theta}° "
-	displayDebugLog(": Raw accelerometer XYZ axis values = $x, $y, $z")
+	def descText = "Calculated angles are Psi = ${Psi}°, Phi = ${Phi}°, Theta = ${Theta}° "
+	displayDebugLog("Raw accelerometer XYZ axis values = $x, $y, $z")
 	displayDebugLog(descText)
-	sendEvent(name: "angleX", value: Psi, displayed: false)
-	sendEvent(name: "angleY", value: Phi, displayed: false)
-	sendEvent(name: "angleZ", value: Theta, displayed: false)
+	state.currentAngleX = Psi
+	state.currentAngleY = Phi
+	state.currentAngleZ = Theta
 	if (!state.closedX || !state.openX)
-		displayInfoLog(": Open/Closed position is unknown because Open and/or Closed positions have not been set")
+		displayInfoLog("Open/Closed position is unknown because Open and/or Closed positions have not been set")
 	else {
 		def float cX = Float.parseFloat(state.closedX)
 		def float cY = Float.parseFloat(state.closedY)
@@ -151,34 +158,28 @@ private Map convertAccelValues(value) {
 		def float oX = Float.parseFloat(state.openX)
 		def float oY = Float.parseFloat(state.openY)
 		def float oZ = Float.parseFloat(state.openZ)
-		def float e = 10.0 // Sets range for margin of error
+		// the margin of error value is used to increase/decrease the area of possible positions considered as open / closed
+		def float e = (marginOfError) ? marginOfError : 10.0
 		def ocPosition = "unknown"
 		if ((Psi < cX + e) && (Psi > cX - e) && (Phi < cY + e) && (Phi > cY - e) && (Theta < cZ + e) && (Theta > cZ - e))
 			ocPosition = "closed"
 		else if ((Psi < oX + e) && (Psi > oX - e) && (Phi < oY + e) && (Phi > oY - e) && (Theta < oZ + e) && (Theta > oZ - e))
 			ocPosition = "open"
 		else
-			displayDebugLog(": The current calculated angle position does not match either stored open/closed positions")
+			displayDebugLog("The current calculated angle position does not match either stored open/closed positions")
 		sendpositionEvent(ocPosition)
 	}
-	return [
-		name: 'threeAxis',
-		value: [Psi, Phi, Theta],
-		linkText: getLinkText(device),
-		isStateChange: true,
-		descriptionText: descText,
-	]
 }
 
 // Handles Recent Activity level value messages
 private Map mapActivityLevel(value) {
 	def level = Integer.parseInt(value[0..3],16)
-	def descText = ": Recent activity level reported at $level"
+	def descText = "Recent activity level reported at $level"
 	displayInfoLog(descText)
 	return [
 		name: 'activityLevel',
 		value: level,
-		descriptionText: "$device.displayName$descText",
+		descriptionText: descText,
 	]
 }
 
@@ -189,9 +190,9 @@ private Map mapSensorEvent(value) {
 	def statusType = ["Stationary", "Vibration", "Tilt", "Drop", "", ""]
 	def eventName = ["", "motion", "acceleration", "button", "motion", "acceleration"]
 	def eventType = ["", "active", "active", "pushed", "inactive", "inactive"]
-	def eventMessage = [" is stationary", " was vibrating or moving (Motion active)", " was tilted (Acceleration active)", " was dropped (Button pushed)", ": Motion reset to inactive after $seconds seconds", ": Acceleration reset to inactive"]
+	def eventMessage = ["Sensor is stationary", "Vibration/movement detected (Motion active)", "Tilt detected (Acceleration active)", "Drop detected (Button pushed)", "Motion reset to inactive after $seconds seconds", "Acceleration reset to inactive"]
 	if (value < 4) {
-		sendEvent(name: "sensorStatus", value: statusType[value], descriptionText: "$device.displayName${eventMessage[value]}", isStateChange: true, displayed: (value == 0) ? true : false)
+		sendEvent(name: "sensorStatus", value: statusType[value], descriptionText: eventMessage[value])
 		updateDateTimeStamp(statusType[value])
 	}
 	displayInfoLog("${eventMessage[value]}")
@@ -208,22 +209,19 @@ private Map mapSensorEvent(value) {
 	return [
 		name: eventName[value],
 		value: eventType[value],
-		descriptionText: "$device.displayName${eventMessage[value]}",
-		isStateChange: true,
-		displayed: true
+		descriptionText: (value > 3) ? eventMessage[value] : ""
 	]
 }
 
 // Handles tilt angle change message and posts event to update UI tile display
 private parseTiltAngle(value) {
 	def angle = Integer.parseInt(value,16)
-	def descText = ": tilt angle changed by $angle°"
+	def descText = "Tilt angle changed by $angle°"
 	sendEvent(
 		name: 'tiltAngle',
 		value: angle,
-		descriptionText : "$device.displayName$descText",
-		isStateChange:true,
-		displayed: true
+		descriptionText : descText,
+		isStateChange:true
 	)
 	displayInfoLog(descText)
 }
@@ -250,57 +248,17 @@ private parseBattery(description) {
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
-		isStateChange: true,
 		descriptionText: descText
 	]
 }
 
-//Reset the batteryLastReplaced date to current date
-def resetBatteryReplacedDate(paired) {
-	def newlyPaired = paired ? " for newly paired sensor" : ""
-	sendEvent(name: "batteryLastReplaced", value: new Date())
-	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
-}
-
-// installed() runs just after a sensor is paired using the "Add a Thing" method in the SmartThings mobile app
-def installed() {
-	state.prefsSetCount = 0
-	displayInfoLog(": Installing")
-	init(0)
-}
-
-// configure() runs after installed() when a sensor is paired
-def configure() {
-	displayInfoLog(": Configuring")
-	mapSensorEvent(0)
-	refresh()
-	init()
-	state.prefsSetCount = 1
-	return
-}
-
-// updated() will run twice every time user presses save in preference settings page
-def updated() {
-	def cmd
-	displayInfoLog(": Updating preference settings")
-	init()
-	cmd = refresh()
-	displayInfoLog(": Info message logging enabled")
-	displayDebugLog(": Debug message logging enabled")
-	return cmd
-}
-
-def init() {
-	if (!device.currentState('batteryLastReplaced')?.value)
-		resetBatteryReplacedDate(true)
-	sendEvent(name: "numberOfButtons", value: 1, displayed: false)
-}
-
-// update lastStationary, lastVibration, lastTilt, or lastDrop to current date/time
+// Generate lastStationaryEpoch/Time, lastVibrationEpoch/Time, lastTiltEpoch/Time, or lastDropEpoch/Time event for Epoch time/date app or Hubitat dashboard use
 def updateDateTimeStamp(timeStampType) {
-	displayDebugLog("Setting last${timeStampType} & last${timeStampType}Time to current date/time for webCoRE/dashboard use")
-	sendEvent(name: "last${timeStampType}", value: now(), descriptionText: "Updated button${timeStampType} (webCoRE)")
-	sendEvent(name: "last${timeStampType}Time", value: new Date().toLocaleString(), descriptionText: "Updated button${timeStampType}Time")
+	if (otherDateTimeEnable) {
+		displayDebugLog("Setting last${timeStampType}Epoch and last${timeStampType}Time to current date/time")
+		sendEvent(name: "last${timeStampType}Epoch", value: now(), descriptionText: "Updated button${timeStampType}Epoch")
+		sendEvent(name: "last${timeStampType}Time", value: new Date().toLocaleString(), descriptionText: "Updated button${timeStampType}Time")
+	}
 }
 
 def clearmotionEvent() {
@@ -309,7 +267,7 @@ def clearmotionEvent() {
 		mapSensorEvent(0)
 	result = mapSensorEvent(4)
 	state.motionactive = 0
-	displayDebugLog(": Sending event $result")
+	displayDebugLog("Sending event $result")
 	sendEvent(result)
 }
 
@@ -317,98 +275,138 @@ def clearaccelEvent() {
 	def result = [:]
 	if (device.currentState('sensorStatus')?.value == "Tilt") {
 		if (state.motionactive == 1)
-			sendEvent(name: "sensorStatus", value: "Vibration", displayed: false)
+			sendEvent(name: "sensorStatus", value: "Vibration")
 		else
 			mapSensorEvent(0)
 	}
 	result = mapSensorEvent(5)
-	displayDebugLog(": Sending event $result")
+	displayDebugLog("Sending event $result")
 	sendEvent(result)
 }
 
 def cleardropEvent() {
 	if (device.currentState('sensorStatus')?.value == "Drop") {
 		if (state.motionactive == 1)
-			sendEvent(name: "sensorStatus", value: "Vibration", displayed: false)
+			sendEvent(name: "sensorStatus", value: "Vibration")
 		else
 			mapSensorEvent(0)
 	}
 }
 
 def setClosedPosition() {
-	if (device.currentValue('angleX')) {
-		state.closedX = device.currentState('angleX').value
-		state.closedY = device.currentState('angleY').value
-		state.closedZ = device.currentState('angleZ').value
+	if (state.currentAngleX) {
+		state.closedX = state.currentAngleX
+		state.closedY = state.currentAngleY
+		state.closedZ = state.currentAngleZ
 		sendpositionEvent("closed")
-		displayInfoLog(": Closed position successfully set")
-		displayDebugLog(": Closed position set to $state.closedX°, $state.closedY°, $state.closedZ°")
+		displayInfoLog("Closed position successfully set")
+		displayDebugLog("Closed position set to $state.closedX°, $state.closedY°, $state.closedZ°")
 	}
 	else
-		displayDebugLog(": Closed position NOT set because no 3-axis accelerometer reports have been received yet")
+		displayDebugLog("Closed position NOT set because no 3-axis accelerometer reports have been received yet")
 }
 
 def setOpenPosition() {
-	if (device.currentValue('angleX')) {
-		state.openX = device.currentState('angleX').value
-		state.openY = device.currentState('angleY').value
-		state.openZ = device.currentState('angleZ').value
+	if (state.currentAngleX) {
+		state.openX = state.currentAngleX
+		state.openY = state.currentAngleY
+		state.openZ = state.currentAngleZ
 		sendpositionEvent("open")
-		displayInfoLog(": Open position successfully set")
-		displayDebugLog(": Open position set to $state.openX°, $state.openY°, $state.openZ°")
+		displayInfoLog("Open position successfully set")
+		displayDebugLog("Open position set to $state.openX°, $state.openY°, $state.openZ°")
 	}
 	else
-		displayDebugLog(": Open position NOT set because no 3-axis accelerometer reports have been received yet")
+		displayDebugLog("Open position NOT set because no 3-axis accelerometer reports have been received yet")
 }
 
 def sendpositionEvent(String ocPosition) {
-	def descText = ": Calculated position is $ocPosition"
+	def descText = "Calculated position is $ocPosition"
 	displayInfoLog(descText)
-	sendEvent(
-		name: "contact",
-		value: ocPosition,
-		isStateChange: true,
-		descriptionText: "$device.displayName$descText")
+	sendEvent(name: "contact", value: ocPosition, descriptionText: descText)
 }
 
 def changeSensitivity() {
-	state.sensitivity = (state.sensitivity < 3) ? state.sensitivity + 1 : 1
-	def attrValue = [0x00, 0x15, 0x0B, 0x00]
-	def levelText = ["", "Low", "Medium", "High"]
-	def descText = ": Sensitivity level set to ${levelText[state.sensitivity]}"
-	def cmd = [
-        "zigbee.writeAttribute(0x0000, 0xFF0D, 0x20, ${attrValue[state.sensitivity]}, [mfgCode: 0x115F])",
-        "he cmd 0x${device.deviceNetworkId} 0x${device.endpointId} 0x0000 0xFF0D {${attrValue[state.sensitivity]}}",
-		"he rattr 0x${device.deviceNetworkId} 0x${device.endpointId} 0x0000 0xFF0D"
+	if (!state.sensitivity)
+		// set initial sensitivity level to low
+		state.sensitivity = 0
+	else
+		// cycle level each time button is pressed - low > medium > high > low, etc.
+		state.sensitivity = (state.sensitivity < 2) ? state.sensitivity + 1 : 0
+	// sensitivity level attribute payload to send - low = 0x15, medium = 0x0B, high = 0x01
+	def attrValue = ["15", "0B", "01"]
+	def levelText = ["Low", "Medium", "High"]
+	def descText = "Sensitivity level set to ${levelText[state.sensitivity]}"
+	//def cmds = zigbee.writeAttribute(0x0000, 0xFF0D, 0x20, attrValue[state.sensitivity], [mfgCode: "0x115F"])
+	def cmds = [
+		"he wattr 0x${device.deviceNetworkId} 0x01 0x0000 0xFF0D 0x20 {${attrValue[state.sensitivity]}} {115F}", "delay 200"
 	]
-	sendHubCommand(new hubitat.device.HubAction("zigbee.writeAttribute(0x0000, 0xFF0D, 0x20, ${attrValue[state.sensitivity]}, [mfgCode: 0x115F])"))
-	sendHubCommand(new hubitat.device.HubAction("zigbee.readAttribute(0x0000, 0xFF0D, [mfgCode: 0x115F])"))
-//	zigbee.writeAttribute(0x0000, 0xFF0D, 0x20, attrValue[state.sensitivity], [mfgCode: 0x115F])
-//	zigbee.readAttribute(0x0000, 0xFF0D, [mfgCode: 0x115F])
-	sendEvent(name: "sensitivityLevel", value: levelText[state.sensitivity], isStateChange: true, descriptionText: descText)
+	sendEvent(name: "sensitivityLevel", value: levelText[state.sensitivity], descriptionText: descText)
 	displayInfoLog(descText)
-	return cmd
+	return cmds
+}
+
+// installed() runs just after a sensor is paired
+def installed() {
+	displayInfoLog("Installing")
+	state.prefsSetCount = 0
+	mapSensorEvent(0)
+	refresh()
+	init()
+}
+
+// configure() runs after installed() when a sensor is paired
+def configure() {
+	displayInfoLog("Configuring")
+	mapSensorEvent(0)
+	refresh()
+	init()
+	state.prefsSetCount = 1
+}
+
+// updated() runs every time user presses save in preference settings page
+def updated() {
+	displayInfoLog("Updating preference settings")
+	init()
+	refresh()
+	if (lastCheckinEnable)
+		displayInfoLog("Last checkin events enabled")
+	if (otherDateTimeEnable)
+		displayInfoLog("Other date/time stamp events enabled")
+	displayInfoLog("Info message logging enabled")
+	displayDebugLog("Debug message logging enabled")
+}
+
+def init() {
+	if (!device.currentValue('batteryLastReplaced'))
+		resetBatteryReplacedDate(true)
+	if (!state.sensitivity) {
+		state.sensitivity = 2
+		log.info "Please short-press reset button to set initial sensitivity level to Low"
+	}
+	sendEvent(name: "numberOfButtons", value: 1)
+}
+
+def refresh() {
+	displayInfoLog("Refreshing UI display")
+	if (device.currentValue('tiltAngle') == null)
+		sendEvent(name: 'tiltAngle', value: "--")
+	if (device.currentValue('activityLevel') == null)
+		sendEvent(name: 'activityLevel', value: "--")
+}
+
+//Reset the batteryLastReplaced date to current date
+def resetBatteryReplacedDate(paired) {
+	def newlyPaired = paired ? " for newly paired sensor" : ""
+	sendEvent(name: "batteryLastReplaced", value: new Date().format("MMM dd yyyy", location.timeZone))
+	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
 }
 
 private def displayDebugLog(message) {
-	if (debugLogging) log.debug "${device.displayName}: ${message}"
+	if (debugLogging)
+		log.debug "${device.displayName}: ${message}"
 }
 
 private def displayInfoLog(message) {
 	if (infoLogging || state.prefsSetCount != 1)
 		log.info "${device.displayName}: ${message}"
-}
-
-def refresh() {
-	def cmd
-    displayInfoLog(": Refreshing UI display")
-	if (!state.sensitivity) {
-		state.sensitivity = 0
-		cmd = changeSensitivity()
-	}
-	if (device.currentValue('tiltAngle') == null)
-		sendEvent(name: 'tiltAngle', value: "--", isStateChange: true, displayed: false)
-	if (device.currentValue('activityLevel') == null)
-		sendEvent(name: 'activityLevel', value: "--", isStateChange: true, displayed: false)
-	return cmd
 }
