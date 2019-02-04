@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Vibration Sensor
  *  Model DJT11LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7b
+ *  Version 0.7.1b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
