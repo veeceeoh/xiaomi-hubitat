@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Vibration Sensor
  *  Model DJT11LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7.1b
+ *  Version 0.7.2b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -140,9 +140,9 @@ private Map convertAccelValues(value) {
 	short x = (short)Integer.parseInt(value[8..11],16)
 	short y = (short)Integer.parseInt(value[4..7],16)
 	short z = (short)Integer.parseInt(value[0..3],16)
-	float Psi = Math.round(Math.atan(x/Math.sqrt(z*z+y*y))*1800/Math.PI)/10
-	float Phi = Math.round(Math.atan(y/Math.sqrt(x*x+z*z))*1800/Math.PI)/10
-	float Theta = Math.round(Math.atan(z/Math.sqrt(x*x+y*y))*1800/Math.PI)/10
+	def Psi = Math.round(Math.atan(x/Math.sqrt(z*z+y*y))*1800/Math.PI)/10
+	def Phi = Math.round(Math.atan(y/Math.sqrt(x*x+z*z))*1800/Math.PI)/10
+	def Theta = Math.round(Math.atan(z/Math.sqrt(x*x+y*y))*1800/Math.PI)/10
 	def descText = "Calculated angles are Psi = ${Psi}°, Phi = ${Phi}°, Theta = ${Theta}° "
 	displayDebugLog("Raw accelerometer XYZ axis values = $x, $y, $z")
 	displayDebugLog(descText)
@@ -152,14 +152,14 @@ private Map convertAccelValues(value) {
 	if (!state.closedX || !state.openX)
 		displayInfoLog("Open/Closed position is unknown because Open and/or Closed positions have not been set")
 	else {
-		def float cX = Float.parseFloat(state.closedX)
-		def float cY = Float.parseFloat(state.closedY)
-		def float cZ = Float.parseFloat(state.closedZ)
-		def float oX = Float.parseFloat(state.openX)
-		def float oY = Float.parseFloat(state.openY)
-		def float oZ = Float.parseFloat(state.openZ)
+		def cX = state.closedX
+		def cY = state.closedY
+		def cZ = state.closedZ
+		def oX = state.openX
+		def oY = state.openY
+		def oZ = state.openZ
 		// the margin of error value is used to increase/decrease the area of possible positions considered as open / closed
-		def float e = (marginOfError) ? marginOfError : 10.0
+		def e = (marginOfError) ? marginOfError : 10.0
 		def ocPosition = "unknown"
 		if ((Psi < cX + e) && (Psi > cX - e) && (Phi < cY + e) && (Phi > cY - e) && (Theta < cZ + e) && (Theta > cZ - e))
 			ocPosition = "closed"
