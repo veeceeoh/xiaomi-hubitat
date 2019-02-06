@@ -1,7 +1,7 @@
 /**
  *  Xiaomi "Original" & Aqara Door/Window Sensor
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7.1
+ *  Version 0.7.3b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -54,10 +54,12 @@ metadata {
 	}
 
 	preferences {
+		//Message timeout delay
+		input name: "messageTimeout", title: "Message Timeout Delay: After an open/close event, ignore all open/close messages for ___ seconds. Default = 0.5 seconds", description: "", type: "decimal"
 		//Battery Voltage Range
- 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
- 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "", type: "decimal", range: "2.8..3.4"
- 		//Logging Message Config
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "", type: "decimal", range: "2.8..3.4"
+		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 	}
@@ -100,17 +102,23 @@ def parse(String description) {
 
 // Parse open/close report
 private parseContact(closedOpen) {
-	def value = ["closed", "open"]
-	def desc = ["closed", "opened"]
-	def coreEvent = ["lastClosed", "lastOpened"]
-	displayDebugLog("Setting ${coreEvent[closedOpen]} to current date/time for webCoRE")
-	sendEvent(name: coreEvent[closedOpen], value: now(), descriptionText: "Updated ${coreEvent[closedOpen]} (webCoRE)")
-	return [
-		name: 'contact',
-		value: value[closedOpen],
-		isStateChange: true,
-		descriptionText: "Contact was ${desc[closedOpen]}"
-	]
+	def timeoutDelayMS = messageTimeout ? messageTimeout * 1000 : 500
+	if (((now() - state.lastClosedOpen) > timeoutDelayMS) && (state.closedOpen != closedOpen)) {
+		def value = ["closed", "open"]
+		def desc = ["closed", "opened"]
+		def coreEvent = ["lastClosed", "lastOpened"]
+		displayDebugLog("Setting ${coreEvent[closedOpen]} to current date/time for webCoRE")
+		sendEvent(name: coreEvent[closedOpen], value: now(), descriptionText: "Updated ${coreEvent[closedOpen]} (webCoRE)")
+		state.closedOpen = closedOpen
+		state.lastClosedOpen = now()
+		return [
+			name: 'contact',
+			value: value[closedOpen],
+			isStateChange: true,
+			descriptionText: "Contact was ${desc[closedOpen]}"
+		]
+	} else
+		return [:]
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
@@ -198,4 +206,9 @@ def updated() {
 def init() {
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
+	if (!state.openClose)
+		state.openClose = 2
+	if (!state.lastClosedOpen) {
+		state.lastClosedOpen = now()
+	}
 }
