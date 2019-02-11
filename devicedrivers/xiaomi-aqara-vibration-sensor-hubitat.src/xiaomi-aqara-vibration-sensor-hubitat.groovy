@@ -16,7 +16,7 @@
  *
  *  Based on SmartThings device handler code by a4refillpad
  *  Reworked for use with Hubitat Elevation hub by veeceeoh
- *  Additional contributions to code by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, oltman, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
+ *  Additional contributions to code by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, mike.maxwell, oltman, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
  *
  *  Known issues:
  *  + Xiaomi devices send reports based on changes, and a status report every 50-60 minutes. These settings cannot be adjusted.
