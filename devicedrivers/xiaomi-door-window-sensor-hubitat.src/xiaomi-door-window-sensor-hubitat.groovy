@@ -1,5 +1,6 @@
 /**
- *  Xiaomi "Original" & Aqara Door/Window Sensor
+ *  Xiaomi "Original" Door/Window Sensor - model MCCGQ01LM
+ *  & Aqara Door/Window Sensor - model MCCGQ11LM
  *  Device Driver for Hubitat Elevation hub
  *  Version 0.7.2
  *
