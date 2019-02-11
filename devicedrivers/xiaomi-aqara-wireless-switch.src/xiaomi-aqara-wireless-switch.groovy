@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Wireless Smart Light Switch
  *  2016 & 2018 revisions of models WXKG03LM (1 button) and WXKG02LM (2 buttons)
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.56b
+ *  Version 0.6b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -84,6 +84,8 @@ metadata {
  		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
+		//Firmware 2.0.5 Compatibility Fix Config
+		input name: "oldFirmware", type: "bool", title: "DISABLE 2.0.5 firmware compatibility fix (for users of 2.0.4 or earlier)", description: ""
 	}
 }
 
@@ -94,6 +96,10 @@ def parse(String description) {
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
+
+	if (!oldFirmware & valueHex)
+		// Reverse order of bytes in description's value hex string - required for Hubitat firmware 2.0.5 or newer
+		valueHex = reverseHexString(valueHex)
 
 	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
 	sendEvent(name: "lastCheckinEpoch", value: now())
@@ -124,6 +130,15 @@ def parse(String description) {
 		return createEvent(map)
 	} else
 		return [:]
+}
+
+// Reverses order of bytes in hex string
+def reverseHexString(hexString) {
+	def reversed = ""
+	for (int i = hexString.length(); i > 0; i -= 2) {
+		swaped += hexString.substring(i - 2, i )
+	}
+	return reversed
 }
 
 // Build event map based on type of WXKG02LM button press
