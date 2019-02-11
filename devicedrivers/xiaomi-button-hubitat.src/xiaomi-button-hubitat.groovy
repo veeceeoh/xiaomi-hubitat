@@ -1,7 +1,7 @@
 /**
  *  Xiaomi "Original" Button - model WXKG01LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.8.1
+ *  Version 0.8.5
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -38,11 +38,15 @@ metadata {
 		capability "Sensor"
 		capability "Battery"
 
-		attribute "lastCheckin", "String"
+		attribute "lastCheckinEpoch", "String"
+		attribute "lastCheckinTime", "String"
 		attribute "batteryLastReplaced", "String"
-		attribute "buttonPressed", "String"
-		attribute "buttonHeld", "String"
-		attribute "buttonReleased", "String"
+		attribute "buttonPressedEpoch", "String"
+		attribute "buttonPressedTime", "String"
+		attribute "buttonHeldEpoch", "String"
+		attribute "buttonHeldTime", "String"
+		attribute "buttonReleasedEpoch", "String"
+		attribute "buttonReleasedTime", "String"
 
 		// this fingerprint is identical to the one for Xiaomi "Original" Door/Window Sensor except for model name
 		fingerprint endpointId: "01", profileId: "0104", deviceId: "0104", inClusters: "0000,0003,FFFF,0019", outClusters: "0000,0004,0003,0006,0008,0005,0019", manufacturer: "LUMI", model: "lumi.sensor_switch"
@@ -75,8 +79,9 @@ def parse(String description) {
 		// Reverse order of bytes in description's value hex string - required for Hubitat firmware 2.0.5 or newer
 		valueHex = reverseHexString(valueHex)
 
-	// lastCheckin can be used with webCoRE
-	sendEvent(name: "lastCheckin", value: now())
+	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
+	sendEvent(name: "lastCheckinEpoch", value: now())
+	sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
 
 	displayDebugLog("Parsing message: ${description}")
 
@@ -154,10 +159,11 @@ def heldState() {
 	}
 }
 
-// Generate buttonPressed, buttonHeld, or buttonReleased event for webCoRE use
-def updateCoREEvent(coreType) {
-	displayDebugLog("Setting button${coreType} to current date/time for webCoRE")
-	sendEvent(name: "button${coreType}", value: now(), descriptionText: "Updated button${coreType} (webCoRE)")
+// Generate buttonPressedEpoch/Time, buttonHeldEpoch/Time, or buttonReleasedEpoch/Time event for Epoch time/date app or Hubitat dashboard use
+def updateDateTimeStamp(timeStampType) {
+	displayDebugLog("Setting button${timeStampType}Epoch and button${timeStampType}Time to current date/time")
+	sendEvent(name: "button${timeStampType}Epoch", value: now(), descriptionText: "Updated button${timeStampType}Epoch")
+	sendEvent(name: "button${timeStampType}Time", value: new Date().toLocaleString(), descriptionText: "Updated button${timeStampType}Time")
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
