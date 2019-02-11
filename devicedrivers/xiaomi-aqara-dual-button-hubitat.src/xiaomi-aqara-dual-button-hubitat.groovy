@@ -1,7 +1,7 @@
 /*
  *  Xiaomi Aqara Smart Light Switch - Wireless 2 button model WXKG02LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.6 gn0st1c
+ *  Version 0.6.5 gn0st1c
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -41,6 +41,8 @@ metadata {
  		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
+		//Firmware 2.0.5 Compatibility Fix Config
+		input name: "oldFirmware", type: "bool", title: "DISABLE 2.0.5 firmware compatibility fix (for users of 2.0.4 or earlier)", description: ""
 	}
 }
 
@@ -51,6 +53,10 @@ def parse(String description) {
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
+
+	if (!oldFirmware & valueHex)
+		// Reverse order of bytes in description's value hex string - required for Hubitat firmware 2.0.5 or newer
+		valueHex = reverseHexString(valueHex)
 
 	// lastCheckin can be used with webCoRE
 	sendEvent(name: "lastCheckin", value: now())
@@ -77,6 +83,15 @@ def parse(String description) {
 		return createEvent(map)
 	} else
 		return [:]
+}
+
+// Reverses order of bytes in hex string
+def reverseHexString(hexString) {
+	def reversed = ""
+	for (int i = hexString.length(); i > 0; i -= 2) {
+		swaped += hexString.substring(i - 2, i )
+	}
+	return reversed
 }
 
 // Build event map based on type of button press
