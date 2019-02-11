@@ -1,7 +1,8 @@
 /**
- * Xiaomi "Original" & Aqara Temperature Humidity Sensor
+ * Xiaomi "Original" Temperature Humidity Sensor - model RTCGQ01LM
+ * & Aqara Temperature Humidity Sensor - model WSDCGQ11LM
  * Device Driver for Hubitat Elevation hub
- * Version 0.7
+ * Version 0.8.1
  *
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -14,7 +15,7 @@
  * for the specific language governing permissions and limitations under the License.
  *
  * Based on SmartThings device handler code by a4refillpad
- * With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
+ * With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, mike.maxwell, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
  * Code reworked for use with Hubitat Elevation hub by veeceeoh
  *
  * Known issues:
@@ -37,13 +38,14 @@ metadata {
 		capability "Battery"
 
 		attribute "pressure", "Decimal"
-		attribute "lastCheckin", "String"
+		attribute "lastCheckinEpoch", "String"
+		attribute "lastCheckinTime", "Date"
 		attribute "batteryLastReplaced", "String"
 
 		//fingerprint for Xioami "original" Temperature Humidity Sensor
-		fingerprint endpointId: "01", profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_ht"
+		fingerprint profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_ht"
 		//fingerprint for Xioami Aqara Temperature Humidity Sensor
-		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000, 0003, FFFF, 0402, 0403, 0405", outClusters: "0000, 0004, FFFF", manufacturer: "LUMI", model: "lumi.weather"
+		fingerprint profileId: "0104", inClusters: "0000, 0003, FFFF, 0402, 0403, 0405", outClusters: "0000, 0004, FFFF", manufacturer: "LUMI", model: "lumi.weather"
 
 		command "resetBatteryReplacedDate"
 	}
@@ -55,11 +57,15 @@ metadata {
 		input "pressOffset", "decimal", title:"Pressure Offset (Aqara model only)", description:"", range: "*..*"
 		input name:"PressureUnits", type:"enum", title:"Pressure Units (Aqara model only)", description:"", options:["mbar", "kPa", "inHg", "mmHg"]
 		//Battery Voltage Range
- 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
- 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "", type: "decimal", range: "2.8..3.4"
- 		//Logging Message Config
- 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
- 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
+		//Date/Time Stamp Events Config
+		input name: "lastCheckinEnable", type: "bool", title: "Enable custom date/time stamp events for lastCheckin", description: ""
+		//Logging Message Config
+		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
+		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
+		//Firmware 2.0.5 Compatibility Fix Config
+		input name: "oldFirmware", type: "bool", title: "DISABLE 2.0.5 firmware compatibility fix (for users of 2.0.4 or earlier)", description: ""
 	}
 }
 
@@ -70,8 +76,9 @@ def parse(String description) {
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
 
-	// lastCheckin can be used with webCoRE
-	sendEvent(name: "lastCheckin", value: now())
+	if (!oldFirmware & valueHex)
+		// Reverse order of bytes in description's value hex string - required for Hubitat firmware 2.0.5 or newer
+		valueHex = reverseHexString(valueHex)
 
 	displayDebugLog("Parsing message: ${description}")
 
@@ -98,6 +105,15 @@ def parse(String description) {
 		return [:]
 }
 
+// Reverses order of bytes in hex string
+def reverseHexString(hexString) {
+	def reversed = ""
+	for (int i = hexString.length(); i > 0; i -= 2) {
+		swaped += hexString.substring(i - 2, i )
+	}
+	return reversed
+}
+
 // Calculate temperature with 0.1 precision in C or F unit as set by hub location settings
 private parseTemperature(description) {
 	float temp = Integer.parseInt(description,16)/100
@@ -110,7 +126,6 @@ private parseTemperature(description) {
 		name: 'temperature',
 		value: temp,
 		unit: "${temperatureScale}",
-		isStateChange: true,
 		descriptionText: "Temperature is ${temp}°${temperatureScale}",
 		translatable:true
 	]
@@ -126,7 +141,6 @@ private parseHumidity(description) {
 		name: 'humidity',
 		value: humidity,
 		unit: "%",
-		isStateChange: true,
 		descriptionText: "Humidity is ${humidity}%",
 	]
 }
@@ -163,7 +177,6 @@ private parsePressure(description) {
 		name: 'pressure',
 		value: pressureval,
 		unit: PressureUnits,
-		isStateChange: true,
 		descriptionText: "Pressure is ${pressureval} ${PressureUnits}"
 	]
 }
@@ -182,10 +195,50 @@ private parseBattery(description) {
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
-		isStateChange: true,
 		descriptionText: descText
 	]
+	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
+	if (lastCheckinEnable) {
+		sendEvent(name: "lastCheckinEpoch", value: now())
+		sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
+	}
 	return result
+}
+
+// installed() runs just after a sensor is paired
+def installed() {
+	displayDebugLog("Installing")
+	state.prefsSetCount = 0
+	init()
+}
+
+// configure() runs after installed() when a sensor is paired
+def configure() {
+	displayInfoLog("Configuring")
+	init()
+	state.prefsSetCount = 1
+}
+
+// updated() will run every time user saves preferences
+def updated() {
+	displayInfoLog("Updating preference settings")
+	init()
+	if (lastCheckinEnable)
+		displayInfoLog("Last checkin events enabled")
+	displayInfoLog("Info message logging enabled")
+	displayDebugLog("Debug message logging enabled")
+}
+
+def init() {
+	if (!device.currentValue('batteryLastReplaced'))
+		resetBatteryReplacedDate(true)
+}
+
+//Reset the batteryLastReplaced date to current date
+def resetBatteryReplacedDate(paired) {
+	def newlyPaired = paired ? " for newly paired sensor" : ""
+	sendEvent(name: "batteryLastReplaced", value: new Date().format("MMM dd yyyy", location.timeZone))
+	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
 }
 
 private def displayDebugLog(message) {
@@ -195,38 +248,4 @@ private def displayDebugLog(message) {
 private def displayInfoLog(message) {
 	if (infoLogging || state.prefsSetCount != 1)
 		log.info "${device.displayName}: ${message}"
-}
-
-//Reset the batteryLastReplaced date to current date
-def resetBatteryReplacedDate(paired) {
-	def newlyPaired = paired ? " for newly paired sensor" : ""
-	sendEvent(name: "batteryLastReplaced", value: new Date())
-	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
-}
-
-// installed() runs just after a sensor is paired
-def installed() {
-	state.prefsSetCount = 0
-	displayDebugLog("Installing")
-}
-
-// configure() runs after installed() when a sensor is paired
-def configure() {
-	displayInfoLog("Configuring")
-	init()
-	state.prefsSetCount = 1
-	return
-}
-
-// updated() will run every time user saves preferences
-def updated() {
-	displayInfoLog("Updating preference settings")
-	init()
-	displayInfoLog("Info message logging enabled")
-	displayDebugLog("Debug message logging enabled")
-}
-
-def init() {
-	if (!device.currentState('batteryLastReplaced')?.value)
-		resetBatteryReplacedDate(true)
 }
