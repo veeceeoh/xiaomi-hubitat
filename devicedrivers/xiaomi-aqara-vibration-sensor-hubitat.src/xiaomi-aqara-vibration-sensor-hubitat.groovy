@@ -88,7 +88,7 @@ def parse(String description) {
 	displayDebugLog "Parsing sensor message: ${description}"
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
-	def value = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
+	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	def eventType
 	Map map = [:]
 	def cmds = []
@@ -106,16 +106,16 @@ def parse(String description) {
 	// Send message data to appropriate parsing function based on the type of report
 	if (attrId == "0055") {
 	// Handles vibration (value 01), tilt (value 02), and drop (value 03) event messages
-		if (value?.endsWith('0002')) {
+		if (valueHex?.endsWith('0002')) {
 			eventType = 2
-			parseTiltAngle(value[0..3])
+			parseTiltAngle(valueHex[0..3])
 		} else {
-			eventType = Integer.parseInt(value,16)
+			eventType = Integer.parseInt(valueHex,16)
 		}
 		map = mapSensorEvent(eventType)
 	} else if (attrId == "0508") {
 		// Handles XYZ Accelerometer values to determine position
-		convertAccelValues(value)
+		convertAccelValues(valueHex)
 	} else if (attrId == "0505") {
 		// Handles recent activity level value reports
 		map = mapActivityLevel(value)
@@ -125,7 +125,7 @@ def parse(String description) {
 		cmds = changeSensitivity()
 	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
 		// Parse battery level from hourly announcement message
-		map = (value.size() > 30) ? parseBattery(value) : [:]
+		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
 	} else if (!(cluster == "0000" & attrId == "0001")) {
 		displayDebugLog "Unable to parse ${description}"
 	}
