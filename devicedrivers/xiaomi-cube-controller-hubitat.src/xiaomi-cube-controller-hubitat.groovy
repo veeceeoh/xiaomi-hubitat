@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Mi Cube Controller - model MFKZQ01LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.2b
+ *  Version 0.2.1b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -80,6 +80,8 @@ metadata {
 		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
+		//Firmware 2.0.5 Compatibility Fix Config
+		input name: "oldFirmware", type: "bool", title: "DISABLE 2.0.5 firmware compatibility fix (for users of 2.0.4 or earlier)", description: ""
 	}
 }
 
@@ -122,6 +124,10 @@ def parse(String description) {
 	displayDebugLog("Parsing description: ${description}")
 	Map map = [:]
 
+	if (!oldFirmware & valueHex)
+		// Reverse order of bytes in description's value hex string - required for Hubitat firmware 2.0.5 or newer
+		valueHex = reverseHexString(valueHex)
+
 	// lastCheckin can be used with webCoRE
 	sendEvent(name: "lastCheckin", value: now())
 
@@ -153,6 +159,15 @@ def parse(String description) {
 		return createEvent(map)
 	} else
 		return [:]
+}
+
+// Reverses order of bytes in hex string
+def reverseHexString(hexString) {
+	def reversed = ""
+	for (int i = hexString.length(); i > 0; i -= 2) {
+		swaped += hexString.substring(i - 2, i )
+	}
+	return reversed
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
