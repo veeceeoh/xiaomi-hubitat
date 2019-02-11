@@ -14,7 +14,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *  Based on SmartThings device handler code by a4refillpad
- *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
+ *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, mike.maxwell, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
  *  Reworked and additional code for use with Hubitat Elevation hub by veeceeoh
  *
  *  Known issues:
