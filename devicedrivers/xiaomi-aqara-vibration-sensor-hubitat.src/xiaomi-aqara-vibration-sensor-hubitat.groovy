@@ -85,7 +85,6 @@ metadata {
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-	displayDebugLog "Parsing sensor message: ${description}"
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
@@ -93,9 +92,12 @@ def parse(String description) {
 	Map map = [:]
 	def cmds = []
 
-	if (!oldFirmware & valueHex)
+	if (!oldFirmware & valueHex != null)
 		// Reverse order of bytes in description's value hex string - required for Hubitat firmware 2.0.5 or newer
 		valueHex = reverseHexString(valueHex)
+
+	displayDebugLog("Parsing message: ${description}")
+	displayDebugLog("Message payload: ${valueHex}")
 
 	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
 	if (lastCheckinEnable) {
@@ -118,7 +120,7 @@ def parse(String description) {
 		convertAccelValues(valueHex)
 	} else if (attrId == "0505") {
 		// Handles recent activity level value reports
-		map = mapActivityLevel(value)
+		map = mapActivityLevel(valueHex)
 	} else if (cluster == "0000" & attrId == "0005") {
 		displayDebugLog "Reset button was short-pressed"
 		// Change sensitivity level
@@ -144,7 +146,7 @@ def parse(String description) {
 def reverseHexString(hexString) {
 	def reversed = ""
 	for (int i = hexString.length(); i > 0; i -= 2) {
-		swaped += hexString.substring(i - 2, i )
+		reversed += hexString.substring(i - 2, i )
 	}
 	return reversed
 }
