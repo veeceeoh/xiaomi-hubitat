@@ -14,7 +14,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *  Based on SmartThings device handler code by a4refillpad
- *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
+ *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, mike.maxwell, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
  *  Code reworked for use with Hubitat Elevation hub by veeceeoh
  *
  *  Known issues:
@@ -68,14 +68,15 @@ def parse(String description) {
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
 
-	if (!oldFirmware & valueHex)
+	if (!oldFirmware & valueHex != null)
 		// Reverse order of bytes in description's value hex string - required for Hubitat firmware 2.0.5 or newer
 		valueHex = reverseHexString(valueHex)
 
+	displayDebugLog("Parsing message: ${description}")
+	displayDebugLog("Message payload: ${valueHex}")
+
 	// lastCheckin can be used with webCoRE
 	sendEvent(name: "lastCheckin", value: now())
-
-	displayDebugLog("Parsing message: ${description}")
 
 	// Send message data to appropriate parsing function based on the type of report
 	if (cluster == "0406")
@@ -101,7 +102,7 @@ def parse(String description) {
 def reverseHexString(hexString) {
 	def reversed = ""
 	for (int i = hexString.length(); i > 0; i -= 2) {
-		swaped += hexString.substring(i - 2, i )
+		reversed += hexString.substring(i - 2, i )
 	}
 	return reversed
 }
