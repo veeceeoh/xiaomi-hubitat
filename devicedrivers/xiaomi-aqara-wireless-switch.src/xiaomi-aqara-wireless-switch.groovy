@@ -16,7 +16,7 @@
  *
  *  Based on SmartThings device handler code by a4refillpad
  *  Reworked for use with Hubitat Elevation hub by gn0st1c with additional code by veeceeoh
- *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, veeceeoh, & xtianpaiva
+ *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, mike.maxwell, rinkek, ronvandegraaf, snalee, tmleafs, twonk, veeceeoh, & xtianpaiva
  *
  *  Notes on capabilities of the different models:
  *  Model WXKG03LM (1 button) - 2016 Revision:
@@ -97,15 +97,16 @@ def parse(String description) {
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
 
-	if (!oldFirmware & valueHex)
+	if (!oldFirmware & valueHex != null)
 		// Reverse order of bytes in description's value hex string - required for Hubitat firmware 2.0.5 or newer
 		valueHex = reverseHexString(valueHex)
+
+	displayDebugLog("Parsing message: ${description}")
+	displayDebugLog("Message payload: ${valueHex}")
 
 	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
 	sendEvent(name: "lastCheckinEpoch", value: now())
 	sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
-
-	displayDebugLog("Parsing message: ${description}")
 
 	// Send message data to appropriate parsing function based on the type of report
 	if (cluster == "0006") {
@@ -136,7 +137,7 @@ def parse(String description) {
 def reverseHexString(hexString) {
 	def reversed = ""
 	for (int i = hexString.length(); i > 0; i -= 2) {
-		swaped += hexString.substring(i - 2, i )
+		reversed += hexString.substring(i - 2, i )
 	}
 	return reversed
 }
@@ -251,14 +252,29 @@ def updated() {
 }
 
 def init() {
-	def modelId = Integer.parseInt(device.getDataValue("model")[16],16)
-	def modelText = (modelId == 1) ? "03" : "02"
-	displayInfoLog("Reported sensor model is WXKG${modelText}LM ($modelId button Aqara Wireless Smart Light Switch)")
+	def nButtons = 0
+	def revYear = "16"
+	def zigbeeModel = device.data.model ? device.data.model : "unknown"
+	displayInfoLog("Reported ZigBee model ID is $zigbeeModel")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
+	if (zigbeeModel == "lumi.sensor_ht")
+		log.warn "Model RTCGQ01LM Xiaomi Temperature Humidity Sensor Detected. Please manually assign Xiaomi Temperature Humidity Sensor device driver"
+	else if (zigbeeModel.startsWith("lumi.sensor_8"))
+		nButtons = Integer.parseInt(zigbeeModel[16],16)
+	else if (zigbeeModel.startsWith("lumi.remote")) {
+		nButtons = Integer.parseInt(zigbeeModel[13],16)
+		revYear = "18"
+	}
+	else
+		log.warn "Reported device model is unknown"
+	if (nButtons != 0) {
+		def modelText = (nButtons == 1) ? "03" : "02"
+		displayInfoLog("Reported model is WXKG${modelText}LM - 20$revYear revision ($nButtons button Aqara Wireless Smart Light Switch)")
+	}
 	if (!state.numOfButtons) {
-		sendEvent(name: "numberOfButtons", value: modelId)
-		displayInfoLog("Number of buttons set to $modelId")
-		state.numOfButtons = modelId
+		sendEvent(name: "numberOfButtons", value: nButtons)
+		displayInfoLog("Number of buttons set to $nButtons")
+		state.numOfButtons = nButtons
 	}
 }
