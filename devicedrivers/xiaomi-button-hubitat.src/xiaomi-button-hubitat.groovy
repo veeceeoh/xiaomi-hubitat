@@ -120,10 +120,10 @@ def reverseHexString(hexString) {
 // Parse button message (press, double-click, triple-click, quad-click, and release)
 private parseButtonMessage(attrValue) {
 	def clickType = ["", "single", "double", "triple", "quadruple", "shizzle"]
-	def coreType = (attrValue == 1) ? "Released" : "Pressed"
+	def `core`Type = (attrValue == 1) ? "Released" : "Pressed"
 	def countdown = waittoHeld ?: 1
 	attrValue = (attrValue < 5) ? attrValue : 5
-	updateCoREEvent(coreType)
+	updateDateTimeStamp(coreType)
 	// On single-press start heldState countdown but do not generate event
 	if (attrValue == 0) {
 		runIn((countdown), heldState)
@@ -156,7 +156,7 @@ def heldState() {
 			descriptionText: descText
 		)
 		displayInfoLog(descText)
-		updateCoREEvent("Held")
+		updateDateTimeStamp("Held")
 	}
 }
 
