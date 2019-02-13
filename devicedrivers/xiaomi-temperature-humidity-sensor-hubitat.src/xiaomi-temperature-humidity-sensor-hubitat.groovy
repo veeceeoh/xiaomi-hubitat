@@ -73,12 +73,15 @@ metadata {
 def parse(String description) {
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
+	def encoding = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "encoding"}?.split(":")[1].trim(), 16)
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
 
-	if (!oldFirmware & valueHex != null)
-		// Reverse order of bytes in description's value hex string - required for Hubitat firmware 2.0.5 or newer
+	if (!oldFirmware & valueHex != null & encoding > 0x18 & encoding < 0x3e) {
+		displayDebugLog("Data type of payload is little-endian; reversing byte order")
+		// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
 		valueHex = reverseHexString(valueHex)
+	}
 
 	displayDebugLog("Parsing message: ${description}")
 	displayDebugLog("Message payload: ${valueHex}")
@@ -118,9 +121,9 @@ def reverseHexString(hexString) {
 // Calculate temperature with 0.1 precision in C or F unit as set by hub location settings
 private parseTemperature(description) {
 	float temp = Integer.parseInt(description,16)/100
-	displayDebugLog("Raw reported temperature = ${temp}°C")
 	def offset = tempOffset ? tempOffset : 0
 	temp = (temp > 100) ? (temp - 655.35) : temp
+	displayDebugLog("Raw reported temperature = ${temp}°C")
 	temp = (temperatureScale == "F") ? ((temp * 1.8) + 32) + offset : temp + offset
 	temp = temp.round(1)
 	return [
