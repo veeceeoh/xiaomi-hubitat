@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Wireless Smart Light Switch
  *  2016 & 2018 revisions of models WXKG03LM (1 button) and WXKG02LM (2 buttons)
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.6b
+ *  Version 0.7b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -16,37 +16,30 @@
  *
  *  Based on SmartThings device handler code by a4refillpad
  *  Reworked for use with Hubitat Elevation hub by gn0st1c with additional code by veeceeoh
- *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, mike.maxwell, rinkek, ronvandegraaf, snalee, tmleafs, twonk, veeceeoh, & xtianpaiva
+ *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, veeceeoh, & xtianpaiva
  *
  *  Notes on capabilities of the different models:
- *  Model WXKG03LM (1 button) - 2016 Revision:
+ *  Model WXKG03LM (1 button) - 2016 Revision (lumi.sensor_86sw1lu):
  *    - Single press results in button 1 "pushed" event
- *  Model WXKG03LM (1 button) - 2018 Revision:
+ *  Model WXKG03LM (1 button) - 2018 Revision (lumi.remote.b186acn01):
  *    - Single press results in button 1 "pushed" event
  *    - Double click results in button 1 "doubleTapped" event
  *    - Hold for longer than 400ms results in button 1 "held" event
- *  Model WXKG02LM (2 button) - 2016 Revision:
+ *  Model WXKG02LM (2 button) - 2016 Revision (lumi.sensor_86sw2Un):
  *    - Single press of left button results in button 1 "pushed" event
  *    - Single press of right button results in button 2 "pushed" event
  *    - Single press of both buttons results in button 3 "pushed" event
- *  Model WXKG02LM (2 button) - 2018 Revision:
- *    - Single press of left button results in button 1 "pushed" event
- *    - Single press of right button results in button 2 "pushed" event
- *    - Single press of both buttons results in button 3 "pushed" event
- *    - Double click of left button results in button 1 "doubleTapped" event
- *    - Double click of right button results in button 2 "doubleTapped" event
- *    - Double click of both buttons results in button 3 "doubleTapped" event
- *    - Hold of left button for longer than 400ms results in button 1 "held" event
- *    - Hold of right button for longer than 400ms results in button 2 "held" event
- *    - Hold of both buttons for longer than 400ms results in button 3 "held" event
+ *  Model WXKG02LM (2 button) - 2018 Revision (lumi.remote.b286acn01):
+ *    - Single press of left/right/both button(s) results in button 1/2/3 "pushed" event
+ *    - Double click of left/right/both button(s) results in button 1/2/3 "doubleTapped" event
+ *    - Hold of left/right/both button(s) for longer than 400ms results in button 1/2/3 "held" event
  *
- *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
+ *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, jmagnuson, mike.maxwell, rinkek, ronvandegraaf, snalee, tmleafs, twonk, & veeceeoh
  *
- *  https://xiaomi-mi.com/sockets-and-sensors/xiaomi-aqara-smart-light-control-set
  */
 
 metadata {
-	definition (name: "Xiaomi Aqara Wireless Smart Light Switch", namespace: "veeceeoh", author: "gn0st1c") {
+	definition (name: "Aqara Wireless Smart Light Switch", namespace: "veeceeoh", author: "veeceeoh") {
 		capability "Battery"
 		capability "DoubleTapableButton"
 		capability "HoldableButton"
@@ -64,24 +57,27 @@ metadata {
 		attribute "buttonHeldTime", "String"
 
 		// Aqara Wireless Smart Light Switch - one button - model WXKG03LM - 2016 Revision
-		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw1lu"
-		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw1"
+		fingerprint profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw1lu", deviceJoinName: "Aqara 1-button Wireless Light Switch (2016)"
+		fingerprint profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw1", deviceJoinName: "Aqara 1-button Wireless Light Switch (2016)"
 		// Aqara Wireless Smart Light Switch - two button - model WXKG02LM - 2016 Revision
-		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw2Un"
-		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw2"
+		fingerprint profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw2Un", deviceJoinName: "Aqara 2-button Wireless Light Switch (2016)"
+		fingerprint profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_86sw2", deviceJoinName: "Aqara 2-button Wireless Light Switch (2016)"
 		// Aqara Wireless Smart Light Switch - one button - model WXKG03LM - 2018 Revision
-		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.remote.b186acn01"
+		fingerprint profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.remote.b186acn01", deviceJoinName: "Aqara 1-button Wireless Light Switch (2018)"
 		// Aqara Wireless Smart Light Switch - two button - model WXKG02LM - 2018 Revision
-		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.remote.b286acn01"
+		fingerprint profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.remote.b286acn01", deviceJoinName: "Aqara 2-button Wireless Light Switch (2018)"
 
 		command "resetBatteryReplacedDate"
 	}
 
 	preferences {
 		//Battery Voltage Range
- 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
- 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
- 		//Logging Message Config
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
+		//Date/Time Stamp Events Config
+		input name: "lastCheckinEnable", type: "bool", title: "Enable custom date/time stamp events for lastCheckin", description: ""
+		input name: "otherDateTimeEnable", type: "bool", title: "Enable custom date/time stamp events for lastDrop, lastStationary, lastTilt, and lastVibration", description: ""
+		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 		//Firmware 2.0.5 Compatibility Fix Config
@@ -107,19 +103,20 @@ def parse(String description) {
 	displayDebugLog("Parsing message: ${description}")
 	displayDebugLog("Message payload: ${valueHex}")
 
-	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
-	sendEvent(name: "lastCheckinEpoch", value: now())
-	sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
-
 	// Send message data to appropriate parsing function based on the type of report
 	if (cluster == "0006") {
-		// Parse Model WXKG02LM button press: endpoint 01 = left, 02 = right, 03 = both
-		map = parse02LMMessage(Integer.parseInt(endpoint))
+		// Parse revision 2016 button messages
+		// Model WXKG03LM: endpoint 1 = button pushed
+		// Model WXKG02LM: endpoint 1 = left button pushed, 2 = right button pushed, 3 = both pushed
+		map = parse16Message(Integer.parseInt(endpoint))
 	} else if (cluster == "0012") {
-		// Parse Model WXKG03LM button message: value 0 = held, 1 = pushed, 2 = double-tapped
-		map = parse03LMMessage(Integer.parseInt(valueHex[2..3],16))
+		// Parse revision 2018 button messages
+		// Model WXKG03LM: endpoint 1 = button pushed
+		// Model WXKG02LM: endpoint 1 = left button pushed, 2 = right button pushed, 3 = both pushed
+		// Both models: valueHex 0 = held, 1 = pushed, 2 = double-tapped
+		map = parse18Message(Integer.parseInt(endpoint, valueHex[2..3],16))
 	} else if (cluster == "0000" & attrId == "0005") {
-		displayDebugLog "Reset button was short-pressed"
+		displayDebugLog "Button was long-pressed"
 		// Parse battery level from longer type of announcement message
 		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
 	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
@@ -145,41 +142,45 @@ def reverseHexString(hexString) {
 	return reversed
 }
 
-// Build event map based on type of WXKG02LM button press
-private Map parse02LMMessage(value) {
-	def pushType = ["", "Left", "Right", "Both"]
-	def descText = "${pushType[value]} button${(value == 3) ? "s" : ""} pressed (Button $value pushed)"
+// Build event map based revision 2016 button press
+private Map parse16Message(buttonNum) {
+	def whichButton = [1: ${(state.numOfButtons == 1) ? "Button" : "Left button"}, 2: "Right button", 3: "Both buttons"]
+	def descText = "${whichButton[buttonNum]} was pressed (Button $buttonNum pushed)"
 	displayInfoLog(descText)
 	updateDateTimeStamp("Pressed")
 	return [
 		name: 'pushed',
-		value: value,
+		value: buttonNum,
 		isStateChange: true,
 		descriptionText: descText
 	]
 }
 
-// Build event map based on type of WXKG03LM button press
-private parse03LMMessage(value) {
-	// Button message values (as integer): value 0 = held, 1 = pushed, 2 = double-tapped
+// Build event map based on revision 2018 button press
+private parse18Message(buttonNum, pressType) {
+	// Button press type message values (as integer): value 0 = held, 1 = pushed, 2 = double-tapped
+	def whichButton = [1: ${(state.numOfButtons == 1) ? "Button" : "Left button"}, 2: "Right button", 3: "Both buttons"]
 	def messageType = ["held", "pressed", "double-tapped"]
 	def eventType = ["held", "pushed", "doubleTapped"]
 	def timeStampType = ["Held", "Pressed", "DoubleTapped"]
-	displayInfoLog("Button was ${messageType[value]}")
-	updateDateTimeStamp(timeStampType[value])
+	def descText = "${whichButton[buttonNum]} was ${messageType[pressType]} (Button $buttonNum ${eventType[pressType]})"
+	displayInfoLog(descText)
+	updateDateTimeStamp(timeStampType[pressType])
 	return [
-		name: eventType[value],
-		value: 1,
+		name: eventType[pressType],
+		value: buttonNum,
 		isStateChange: true,
-		descriptionText: "Button was ${messageType[value]}"
+		descriptionText: descText
 	]
 }
 
 // Generate buttonPressedEpoch/Time, buttonHeldEpoch/Time, or buttonReleasedEpoch/Time event for Epoch time/date app or Hubitat dashboard use
 def updateDateTimeStamp(timeStampType) {
-	displayDebugLog("Setting button${timeStampType}Epoch and button${timeStampType}Time to current date/time")
-	sendEvent(name: "button${timeStampType}Epoch", value: now(), descriptionText: "Updated button${timeStampType}Epoch")
-	sendEvent(name: "button${timeStampType}Time", value: new Date().toLocaleString(), descriptionText: "Updated button${timeStampType}Time")
+	if (otherDateTimeEnable) {
+		displayDebugLog("Setting button${timeStampType}Epoch and button${timeStampType}Time to current date/time")
+		sendEvent(name: "button${timeStampType}Epoch", value: now(), descriptionText: "Updated button${timeStampType}Epoch")
+		sendEvent(name: "button${timeStampType}Time", value: new Date().toLocaleString(), descriptionText: "Updated button${timeStampType}Time")
+	}
 }
 
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
@@ -200,18 +201,23 @@ private parseBattery(description) {
 	def roundedPct = Math.min(100, Math.round(pct * 100))
 	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
 	displayInfoLog(descText)
+	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
+	if (lastCheckinEnable) {
+		sendEvent(name: "lastCheckinEpoch", value: now())
+		sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
+	}
 	def result = [
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
-		isStateChange: true,
 		descriptionText: descText
 	]
 	return result
 }
 
 private def displayDebugLog(message) {
-	if (debugLogging) log.debug "${device.displayName}: ${message}"
+	if (debugLogging)
+		log.debug "${device.displayName}: ${message}"
 }
 
 private def displayInfoLog(message) {
@@ -221,15 +227,9 @@ private def displayInfoLog(message) {
 
 //Reset the batteryLastReplaced date to current date
 def resetBatteryReplacedDate(paired) {
-	def newlyPaired = paired ? " for newly paired sensor" : ""
-	sendEvent(name: "batteryLastReplaced", value: new Date())
+	def newlyPaired = paired ? " for newly paired device" : ""
+	sendEvent(name: "batteryLastReplaced", value: new Date().format("MMM dd yyyy", location.timeZone))
 	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
-}
-
-// this call is here to avoid Groovy errors when the Push command is used
-// it is empty because the Xioami button is non-controllable
-def push() {
-	displayDebugLog("No action taken on Push Command. This button cannot be controlled.")
 }
 
 // installed() runs just after a sensor is paired
