@@ -72,12 +72,15 @@ metadata {
 def parse(String description) {
 	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
+	def encoding = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "encoding"}?.split(":")[1].trim(), 16)
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
 
-	if (!oldFirmware & valueHex != null)
-		// Reverse order of bytes in description's value hex string - required for Hubitat firmware 2.0.5 or newer
+	if (!oldFirmware & valueHex != null & encoding > 0x18 & encoding < 0x3e) {
+		displayDebugLog("Data type of payload is little-endian; reversing byte order")
+		// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
 		valueHex = reverseHexString(valueHex)
+	}
 
 	displayDebugLog("Parsing message: ${description}")
 	displayDebugLog("Message payload: ${valueHex}")
@@ -120,7 +123,7 @@ def reverseHexString(hexString) {
 // Parse button message (press, double-click, triple-click, quad-click, and release)
 private parseButtonMessage(attrValue) {
 	def clickType = ["", "single", "double", "triple", "quadruple", "shizzle"]
-	def `core`Type = (attrValue == 1) ? "Released" : "Pressed"
+	def coreType = (attrValue == 1) ? "Released" : "Pressed"
 	def countdown = waittoHeld ?: 1
 	attrValue = (attrValue < 5) ? attrValue : 5
 	updateDateTimeStamp(coreType)
