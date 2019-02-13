@@ -70,12 +70,15 @@ metadata {
 def parse(String description) {
 	def status = (description?.startsWith('zone status')) ? description[17] : ""
 	def attrId = status ? "" : description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
-	def valueHex = status ? "" : description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
+	def encoding = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "encoding"}?.split(":")[1].trim(), 16)
+	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
 
-	if (!oldFirmware & valueHex != null)
-		// Reverse order of bytes in description's value hex string - required for Hubitat firmware 2.0.5 or newer
+	if (!oldFirmware & valueHex != null & encoding > 0x18 & encoding < 0x3e) {
+		displayDebugLog("Data type of payload is little-endian; reversing byte order")
+		// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
 		valueHex = reverseHexString(valueHex)
+	}
 
 	displayDebugLog("Parsing message: ${description}")
 	displayDebugLog("Message payload: ${valueHex}")
