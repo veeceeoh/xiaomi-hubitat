@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Wireless Smart Light Switch
  *  2016 & 2018 revisions of models WXKG03LM (1 button) and WXKG02LM (2 buttons)
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7b
+ *  Version 0.7.1b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -114,7 +114,7 @@ def parse(String description) {
 		// Model WXKG03LM: endpoint 1 = button pushed
 		// Model WXKG02LM: endpoint 1 = left button pushed, 2 = right button pushed, 3 = both pushed
 		// Both models: valueHex 0 = held, 1 = pushed, 2 = double-tapped
-		map = parse18Message(Integer.parseInt(endpoint, valueHex[2..3],16))
+		map = parse18Message(Integer.parseInt(endpoint), Integer.parseInt(valueHex[2..3],16))
 	} else if (cluster == "0000" & attrId == "0005") {
 		displayDebugLog "Button was long-pressed"
 		// Parse battery level from longer type of announcement message
@@ -158,7 +158,6 @@ private Map parse16Message(buttonNum) {
 
 // Build event map based on revision 2018 button press
 private parse18Message(buttonNum, pressType) {
-	// Button press type message values (as integer): value 0 = held, 1 = pushed, 2 = double-tapped
 	def whichButton = [1: ${(state.numOfButtons == 1) ? "Button" : "Left button"}, 2: "Right button", 3: "Both buttons"]
 	def messageType = ["held", "pressed", "double-tapped"]
 	def eventType = ["held", "pushed", "doubleTapped"]
