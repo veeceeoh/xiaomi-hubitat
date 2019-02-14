@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Wireless Smart Light Switch
  *  2016 & 2018 revisions of models WXKG03LM (1 button) and WXKG02LM (2 buttons)
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7.1b
+ *  Version 0.7.2b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -88,7 +88,7 @@ metadata {
 // Parse incoming device messages to generate events
 def parse(String description) {
 	def endpoint = description.split(",").find {it.split(":")[0].trim() == "endpoint"}?.split(":")[1].trim()
-	def cluster	= description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
+	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
 	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def encoding = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "encoding"}?.split(":")[1].trim(), 16)
 	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
@@ -144,7 +144,7 @@ def reverseHexString(hexString) {
 
 // Build event map based revision 2016 button press
 private Map parse16Message(buttonNum) {
-	def whichButton = [1: ${(state.numOfButtons == 1) ? "Button" : "Left button"}, 2: "Right button", 3: "Both buttons"]
+	def whichButton = [1: (state.numOfButtons == 1) ? "Button" : "Left button", 2: "Right button", 3: "Both buttons"]
 	def descText = "${whichButton[buttonNum]} was pressed (Button $buttonNum pushed)"
 	displayInfoLog(descText)
 	updateDateTimeStamp("Pressed")
@@ -158,7 +158,7 @@ private Map parse16Message(buttonNum) {
 
 // Build event map based on revision 2018 button press
 private parse18Message(buttonNum, pressType) {
-	def whichButton = [1: ${(state.numOfButtons == 1) ? "Button" : "Left button"}, 2: "Right button", 3: "Both buttons"]
+	def whichButton = [1: (state.numOfButtons == 1) ? "Button" : "Left button", 2: "Right button", 3: "Both buttons"]
 	def messageType = ["held", "pressed", "double-tapped"]
 	def eventType = ["held", "pushed", "doubleTapped"]
 	def timeStampType = ["Held", "Pressed", "DoubleTapped"]
