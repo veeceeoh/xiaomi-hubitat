@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Aqara Leak Sensor - model SJCGQ11LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7.2
+ *  Version 0.8
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -33,17 +33,20 @@
  */
 
 metadata {
-	definition (name: "Xiaomi Aqara Leak Sensor", namespace: "veeceeoh", author: "veeceeoh") {
+	definition (name: "Aqara Leak Sensor", namespace: "veeceeoh", author: "veeceeoh") {
 		capability "Water Sensor"
 		capability "Sensor"
 		capability "Battery"
 
-		attribute "lastCheckin", "String"
-		attribute "lastDry", "String"
-		attribute "lastWet", "String"
+		attribute "lastCheckinEpoch", "String"
+		attribute "lastCheckinTime", "String"
+		attribute "lastDryEpoch", "String"
+		attribute "lastDryTime", "String"
+		attribute "lastWetEpoch", "String"
+		attribute "lastWetTime", "String"
 		attribute "batteryLastReplaced", "String"
 
-		fingerprint endpointId: "01", profileId: "0104", deviceId: "0402", inClusters: "0000,0003,0001", outClusters: "0019", manufacturer: "LUMI", model: "lumi.sensor_wleak.aq1"
+		fingerprint profileId: "0104", inClusters: "0000,0003,0001", outClusters: "0019", model: "lumi.sensor_wleak.aq1", deviceJoinName: "Aqara Leak Sensor"
 
 		command "resetBatteryReplacedDate"
 		command "resetToDry"
@@ -52,8 +55,11 @@ metadata {
 
 	preferences {
 		//Battery Voltage Range
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "", type: "decimal", range: "2.8..3.4"
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
+		//Date/Time Stamp Events Config
+		input name: "lastCheckinEnable", type: "bool", title: "Enable custom date/time stamp events for lastCheckin", description: ""
+		input name: "otherDateTimeEnable", type: "bool", title: "Enable custom date/time stamp events for lastWet and lastDry", description: ""
 		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
@@ -64,39 +70,32 @@ metadata {
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-	def status = (description?.startsWith('zone status')) ? description[17] : ""
-	def attrId = status ? "" : description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
-	def encoding = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "encoding"}?.split(":")[1].trim(), 16)
-	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
 	Map map = [:]
-
-	if (!oldFirmware & valueHex != null & encoding > 0x18 & encoding < 0x3e) {
-		displayDebugLog("Data type of payload is little-endian; reversing byte order")
-		// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
-		valueHex = reverseHexString(valueHex)
-	}
-
 	displayDebugLog("Parsing message: ${description}")
-	displayDebugLog("Message payload: ${valueHex}")
-
-	// lastCheckin can be used with webCoRE
-	sendEvent(name: "lastCheckin", value: now())
-
 	// Send message data to appropriate parsing function based on the type of report
-	if (status) {
+	if (description?.startsWith('zone status')) {
 		// Parse dry / wet status report
-		map = parseZoneStatusMessage(Integer.parseInt(status))
-	} else if (attrId == "0005") {
-		displayDebugLog("Reset button was short-pressed")
-		// Parse battery level from longer type of announcement message
-		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
-	} else if (attrId == "FF01") {
-		// Parse battery level from hourly announcement message
-		map = parseBattery(valueHex)
+		map = parseZoneStatusMessage(Integer.parseInt(description[17]))
 	} else {
-		displayDebugLog("Unable to parse message")
+		def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
+		def encoding = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "encoding"}?.split(":")[1].trim(), 16)
+		def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
+		if (!oldFirmware & valueHex != null & encoding > 0x18 & encoding < 0x3e) {
+			displayDebugLog("Data type of payload is little-endian; reversing byte order")
+			// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
+			valueHex = reverseHexString(valueHex)
+		}
+		displayDebugLog("Message payload: ${valueHex}")
+		if (attrId == "0005") {
+			displayDebugLog("Reset button was short-pressed")
+			// Parse battery level from longer type of announcement message
+			map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
+		} else if (attrId == "FF01") {
+			// Parse battery level from hourly announcement message
+			map = parseBattery(valueHex)
+		} else
+			displayDebugLog("Unable to parse message")
 	}
-
 	if (map != [:]) {
 		displayInfoLog(map.descriptionText)
 		displayDebugLog("Creating event $map")
@@ -117,13 +116,15 @@ def reverseHexString(hexString) {
 // Parse IAS Zone Status message (wet or dry)
 private parseZoneStatusMessage(status) {
 	def value = status ? "wet" : "dry"
-	def coreType = status ? "Wet" : "Dry"
+	def timeStampType = status ? "Wet" : "Dry"
 	def descText = status ? "Sensor detected water" : "Sensor is dry"
-	sendEvent(name: "last$coreType", value: now())
+	if (otherDateTimeEnable) {
+		sendEvent(name: "last${timeStampType}Epoch", value: now())
+		sendEvent(name: "last${timeStampType}Time", value: new Date().toLocaleString())
+	}
 	return [
 		name: 'water',
 		value: value,
-		isStateChange: true,
 		descriptionText: descText
 	]
 }
@@ -140,16 +141,20 @@ private parseBattery(description) {
 		}
 	}
 	def rawVolts = rawValue / 1000
-	def minVolts = voltsmin ? voltsmin : 2.5
-	def maxVolts = voltsmax ? voltsmax : 3.0
+	def minVolts = voltsmin ? voltsmin : 2.9
+	def maxVolts = voltsmax ? voltsmax : 3.05
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
 	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
+	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
+	if (lastCheckinEnable) {
+		sendEvent(name: "lastCheckinEpoch", value: now())
+		sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
+	}
 	def result = [
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
-		isStateChange: true,
 		descriptionText: descText
 	]
 	return result
@@ -161,7 +166,8 @@ def resetToDry() {
 		def map = parseZoneStatusMessage(0)
 		map.descriptionText = "Manually reset to dry"
 		displayInfoLog(map.descriptionText)
-        sendEvent(map)
+		displayDebugLog("Creating event $map")
+		sendEvent(map)
 	}
 }
 
@@ -171,12 +177,14 @@ def resetToWet() {
 		def map = parseZoneStatusMessage(1)
 		map.descriptionText = "Manually reset to wet"
 		displayInfoLog(map.descriptionText)
-        sendEvent(map)
+		displayDebugLog("Creating event $map")
+		sendEvent(map)
 	}
 }
 
 private def displayDebugLog(message) {
-	if (debugLogging) log.debug "${device.displayName}: ${message}"
+	if (debugLogging)
+		log.debug "${device.displayName}: ${message}"
 }
 
 private def displayInfoLog(message) {
