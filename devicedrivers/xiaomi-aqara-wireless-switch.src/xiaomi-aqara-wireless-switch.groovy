@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Wireless Smart Light Switch
  *  2016 & 2018 revisions of models WXKG03LM (1 button) and WXKG02LM (2 buttons)
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7.2b
+ *  Version 0.7.5b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -76,7 +76,7 @@ metadata {
 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
 		//Date/Time Stamp Events Config
 		input name: "lastCheckinEnable", type: "bool", title: "Enable custom date/time stamp events for lastCheckin", description: ""
-		input name: "otherDateTimeEnable", type: "bool", title: "Enable custom date/time stamp events for lastDrop, lastStationary, lastTilt, and lastVibration", description: ""
+		input name: "otherDateTimeEnable", type: "bool", title: "Enable custom date/time stamp events for buttonPressed, buttonDoubleTapped, and buttonHeld", description: ""
 		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
@@ -108,13 +108,13 @@ def parse(String description) {
 		// Parse revision 2016 button messages
 		// Model WXKG03LM: endpoint 1 = button pushed
 		// Model WXKG02LM: endpoint 1 = left button pushed, 2 = right button pushed, 3 = both pushed
-		map = parse16Message(Integer.parseInt(endpoint))
+		map = parseButtonMessage(Integer.parseInt(endpoint), 1)
 	} else if (cluster == "0012") {
 		// Parse revision 2018 button messages
 		// Model WXKG03LM: endpoint 1 = button pushed
 		// Model WXKG02LM: endpoint 1 = left button pushed, 2 = right button pushed, 3 = both pushed
 		// Both models: valueHex 0 = held, 1 = pushed, 2 = double-tapped
-		map = parse18Message(Integer.parseInt(endpoint), Integer.parseInt(valueHex[2..3],16))
+		map = parseButtonMessage(Integer.parseInt(endpoint), Integer.parseInt(valueHex[2..3],16))
 	} else if (cluster == "0000" & attrId == "0005") {
 		displayDebugLog "Button was long-pressed"
 		// Parse battery level from longer type of announcement message
@@ -122,15 +122,15 @@ def parse(String description) {
 	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
 		// Parse battery level from hourly announcement message
 		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
-	} else if (!(cluster == "0000" & attrId == "0001")) {
-		displayDebugLog "Unable to parse ${description}"
+	} else {
+		displayDebugLog "Unable to parse message"
 	}
 
 	if (map != [:]) {
 		displayDebugLog("Creating event $map")
 		return createEvent(map)
 	} else
-		return [:]
+		return map
 }
 
 // Reverses order of bytes in hex string
@@ -142,22 +142,8 @@ def reverseHexString(hexString) {
 	return reversed
 }
 
-// Build event map based revision 2016 button press
-private Map parse16Message(buttonNum) {
-	def whichButton = [1: (state.numOfButtons == 1) ? "Button" : "Left button", 2: "Right button", 3: "Both buttons"]
-	def descText = "${whichButton[buttonNum]} was pressed (Button $buttonNum pushed)"
-	displayInfoLog(descText)
-	updateDateTimeStamp("Pressed")
-	return [
-		name: 'pushed',
-		value: buttonNum,
-		isStateChange: true,
-		descriptionText: descText
-	]
-}
-
-// Build event map based on revision 2018 button press
-private parse18Message(buttonNum, pressType) {
+// Build event map based on button press
+private parseButtonMessage(buttonNum, pressType) {
 	def whichButton = [1: (state.numOfButtons == 1) ? "Button" : "Left button", 2: "Right button", 3: "Both buttons"]
 	def messageType = ["held", "pressed", "double-tapped"]
 	def eventType = ["held", "pushed", "doubleTapped"]
@@ -258,25 +244,40 @@ def init() {
 	def revYear = "16"
 	def zigbeeModel = device.data.model ? device.data.model : "unknown"
 	displayInfoLog("Reported ZigBee model ID is $zigbeeModel")
-	if (!device.currentState('batteryLastReplaced')?.value)
-		resetBatteryReplacedDate(true)
-	if (zigbeeModel == "lumi.sensor_ht")
-		log.warn "Model RTCGQ01LM Xiaomi Temperature Humidity Sensor Detected. Please manually assign Xiaomi Temperature Humidity Sensor device driver"
-	else if (zigbeeModel.startsWith("lumi.sensor_8"))
-		nButtons = Integer.parseInt(zigbeeModel[16],16)
-	else if (zigbeeModel.startsWith("lumi.remote")) {
-		nButtons = Integer.parseInt(zigbeeModel[13],16)
-		revYear = "18"
+	switch (zigbeeModel.length() > 16 ? zigbeeModel[0..16] : zigbeeModel) {
+		case "lumi.sensor_86sw1":
+			nButtons = 1
+			break;
+		case "lumi.remote.b186a":
+			nButtons = 1
+			revYear = "18"
+			break;
+		case "lumi.sensor_86sw2":
+			nButtons = 3
+			break;
+		case "lumi.remote.b286a":
+			nButtons = 3
+			revYear = "18"
+			break;
+		case "lumi.sensor_ht":
+			log.warn "Model RTCGQ01LM Xiaomi Temperature Humidity Sensor Detected. Please manually assign Xiaomi Temperature Humidity Sensor device driver"
+			break;
+		case "unknown":
+			log.warn "Reported device model is unknown"
+			nButtons = 3
+			break;
 	}
-	else
-		log.warn "Reported device model is unknown"
-	if (nButtons != 0) {
-		def modelText = (nButtons == 1) ? "03" : "02"
-		displayInfoLog("Reported model is WXKG${modelText}LM - 20$revYear revision ($nButtons button Aqara Wireless Smart Light Switch)")
+	if (nButtons != 0 & zigbeeModel != "unknown") {
+		def modelText = (nButtons == 1) ? "3" : "2"
+		def numPanels = (nButtons == 1) ? "Single" : "Dual"
+		displayInfoLog("Reported model is WXKG0${modelText}LM - 20$revYear revision ($numPanels panel Aqara Wireless Smart Light Switch)")
 	}
+	displayInfoLog("Number of buttons set to $nButtons")
 	if (!state.numOfButtons) {
 		sendEvent(name: "numberOfButtons", value: nButtons)
 		displayInfoLog("Number of buttons set to $nButtons")
 		state.numOfButtons = nButtons
 	}
+	if (!device.currentState('batteryLastReplaced')?.value)
+		resetBatteryReplacedDate(true)
 }
