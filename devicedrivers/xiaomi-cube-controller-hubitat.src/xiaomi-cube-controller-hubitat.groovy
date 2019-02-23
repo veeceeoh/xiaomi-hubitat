@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Mi Cube Controller - model MFKZQ01LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.3.1b
+ *  Version 0.3.1b 
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
