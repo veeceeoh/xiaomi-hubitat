@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Mi Cube Controller - model MFKZQ01LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.3.1b 
+ *  Version 0.3b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -32,22 +32,25 @@
 
 metadata {
 	definition (name: "Xiaomi Mi Cube Controller", namespace: "veeceeoh", author: "veeceeoh") {
-		capability "Battery"
-		capability "Configuration"
+		capability "Actuator"
 		capability "PushableButton"
-		capability "Three Axis"
+		capability "Configuration"
+		capability "Battery"
+		capability "Three Axis" //Simulated!
 		capability "Sensor"
 
-		attribute "angle", "number"
 		attribute "face", "number"
+		attribute "angle", "number"
 		attribute "lastCheckinEpoch", "String"
 		attribute "lastCheckinTime", "String"
 		attribute "batteryLastReplaced", "String"
 
-		// Fingerprint data used to match driver to device during pairing
-		fingerprint profileId: "0104", inClusters: "0000,0003,0019,0012", outClusters: "0000,0004,0003,0005,0019,0012", deviceJoinName: "Xiaomi Mi Cube"
-		fingerprint profileId: "0104", inClusters: "0000,0003,0019,0012", outClusters: "0000,0004,0003,0005,0019,0012", model: "lumi.sensor_cube", deviceJoinName: "Xiaomi Mi Cube"
-		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000,0003,0019,0012", outClusters: "0000,0004,0003,0005,0019,0012", model: "lumi.sensor_cube", deviceJoinName: "Xiaomi Mi Cube"
+		// Fingerprint data taken from ZiGate webpage http://zigate.fr/xiaomi-magic-cube-cluster
+		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000, 0003, 0012, 0019", outClusters: "0000, 0003, 0012, 0019", manufacturer: "LUMI", model: "lumi.sensor_cube"
+		fingerprint endpointId: "01", inClusters: "0000, 0003, 0012, 0019", outClusters: "0000, 0003, 0012, 0019", manufacturer: "LUMI", model: "lumi.sensor_cube"
+		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000, 0003, 0019", outClusters: "0000, 0003, 0019", manufacturer: "LUMI", model: "lumi.sensor_cube"
+		fingerprint endpointId: "01", inClusters: "0000, 0003, 0019", outClusters: "0000, 0003, 0019", manufacturer: "LUMI", model: "lumi.sensor_cube"
+		fingerprint profileId: "0104", deviceId: "5F01", inClusters: "0000, 0003, 0012, 0019", outClusters: "0000, 0003, 0012, 0019", manufacturer: "LUMI", model: "lumi.sensor_cube"
 
 		command "setFace0"
 		command "setFace1"
@@ -55,6 +58,7 @@ metadata {
 		command "setFace3"
 		command "setFace4"
 		command "setFace5"
+
 		command "flip90"
 		command "flip180"
 		command "slide"
@@ -62,12 +66,14 @@ metadata {
 		command "rotateR"
 		command "rotateL"
 		command "shake"
+
+		command "enrollResponse"
 		command "resetBatteryReplacedDate"
 	}
 
 	preferences {
 		//Cube Mode Config
-		input (name: "cubeMode", title: "Cube Mode: Select how many buttons to control", description: "", type: "enum", options: [1: "Simple - 7 buttons", 2: "Advanced - 36 buttons", 3: "Combined - 43 buttons"])
+		input (name: "cubeMode", title: "Cube Mode: Select how many buttons to control", description: "", type: "enum", options: [0: "Simple - 7 buttons", 1: "Advanced - 36 buttons", 2: "Combined - 43 buttons"])
 		//Battery Voltage Range
 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
@@ -84,50 +90,45 @@ metadata {
 // Parse incoming device messages to generate events
 def parse(String description) {
 	displayDebugLog("Parsing message: ${description}")
-	if (description?.startsWith('re')) {
+	if (description?.startsWith('re'))
 		description = description - "read attr - "
-		Map descMap = (description).split(",").inject([:]) {
-			map, param ->
-			def nameAndValue = param.split(":")
-			map += [(nameAndValue[0].trim()):nameAndValue[1].trim()]
-		}
-		displayDebugLog("Map of message: ${descMap}")
-		def intEncoding = Integer.parseInt(descMap.encoding, 16)
-		if (!oldFirmware && descMap.value != null && intEncoding > 0x18 && intEncoding < 0x3e) {
-			displayDebugLog("Data type of message payload is little-endian; reversing byte order")
-			// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
-			descMap.value = reverseHexString(descMap.value)
-			displayDebugLog("Reversed payload value: ${descMap.value}")
-		}
-		Map eventMap = [:]
-		// Send message data to appropriate parsing function based on the type of report
-		if (descMap.cluster == "0012" && descMap.attrId == "0055") {
-			// Shake, flip, knock, slide messages
-			getMotionResult(descMap.value)
-		} else if (descMap.cluster == "000C" && descMap.attrId == "FF05") {
-			// Rotation (90 and 180 degrees)
-			getRotationResult(descMap.value)
-		} else if (descMap.cluster == "0000" && descMap.attrId == "0005") {
-			displayInfoLog("Reset button was short-pressed")
-			// Parse battery level from longer type of announcement message
-			eventMap = (descMap.value.size() > 60) ? parseBattery(descMap.value.split('FF42')[1]) : [:]
-		} else if (descMap.cluster == "0000" & (descMap.attrId == "FF01" || descMap.attrId == "FF02")) {
-			// Parse battery level from hourly announcement message
-			eventMap = (descMap.value.size() > 30) ? parseBattery(descMap.value) : [:]
-		} else
-			displayDebugLog("Unable to parse message")
-
-		if (eventMap != [:]) {
-			displayInfoLog(eventMap.descriptionText)
-			displayDebugLog("Creating event $eventMap")
-			return createEvent(eventMap)
-		} else
-			return eventMap
-	} else if (description?.startsWith('cat')) {
-		displayDebugLog("No action taken on 'catchall' message")
+	Map descMap = (description).split(",").inject([:]) {
+		map, param ->
+		def nameAndValue = param.split(":")
+		map += [(nameAndValue[0].trim()):nameAndValue[1].trim()]
+	}
+	displayDebugLog("Map of message: ${descMap}")
+	def intEncoding = Integer.parseInt(descMap.encoding, 16)
+	if (!oldFirmware && descMap.value != null && intEncoding > 0x18 && intEncoding < 0x3e) {
+		displayDebugLog("Data type of message payload is little-endian; reversing byte order")
+		// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
+		descMap.value = reverseHexString(descMap.value)
+		displayDebugLog("Reversed payload value: ${descMap.value}")
+	}
+	Map eventMap = [:]
+	// Send message data to appropriate parsing function based on the type of report
+	if (descMap.cluster == "0012" && descMap.attrId == "0055") {
+		// Shake, flip, knock, slide messages
+		getMotionResult(descMap.value)
+	} else if (descMap.cluster == "000C" && descMap.attrId == "FF05") {
+		// Rotation (90 and 180 degrees)
+		getRotationResult(descMap.value)
+	} else if (descMap.cluster == "0000" && descMap.attrId == "0005") {
+		displayInfoLog("Reset button was short-pressed")
+		// Parse battery level from longer type of announcement message
+		eventMap = (descMap.value.size() > 60) ? parseBattery(descMap.value.split('FF42')[1]) : [:]
+	} else if (descMap.cluster == "0000" & (descMap.attrId == "FF01" || descMap.attrId == "FF02")) {
+		// Parse battery level from hourly announcement message
+		eventMap = (descMap.value.size() > 30) ? parseBattery(descMap.value) : [:]
 	} else
-		displayDebugLog("Unknown message type, message not parseable")
-	return
+		displayDebugLog("Unable to parse message")
+
+	if (eventMap != [:]) {
+		displayInfoLog(eventMap.descriptionText)
+		displayDebugLog("Creating event $eventMap")
+		return createEvent(eventMap)
+	} else
+		return eventMap
 }
 
 // Reverses order of bytes in hex string
@@ -447,7 +448,7 @@ def resetBatteryReplacedDate(paired) {
 def installed() {
 	state.prefsSetCount = 0
 	displayInfoLog("Installing")
-	setNumButtons()
+	numButtons()
 }
 
 // configure() runs after installed() when a device is paired or reconnected
@@ -455,7 +456,8 @@ def configure() {
 	displayInfoLog("Configuring")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
-	setNumButtons()
+	numButtons()
+	displayInfoLog("Number of buttons = ${device.currentState('numberOfButtons')?.value}")
 	state.prefsSetCount = 1
 	return
 }
@@ -464,24 +466,22 @@ def updated() {
 	displayInfoLog("Updating preference settings")
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
-	setNumButtons()
+	numButtons()
+	displayInfoLog("Number of buttons = ${device.currentState('numberOfButtons')?.value}")
 	displayInfoLog("Info message logging enabled")
 	displayDebugLog("Debug message logging enabled")
 }
 
 // Set number of buttons available to Apps based on user setting
-def setNumButtons() {
-	def numButtons = [1: 7, 2: 36, 3: 43]
-	def cubeModeInt = (settings.cubeMode) ? settings.cubeMode as Integer : null
-	if (settings.cubeMode && (state.cubeMode != cubeModeInt)) {
-		sendEvent(name: "numberOfButtons", value: numButtons[cubeModeInt])
-		state.cubeMode = cubeModeInt
-		displayInfoLog("Number of buttons set to ${numButtons[cubeModeInt]}")
-	} else if (!state.cubeMode || !settings.cubeMode) {
-		sendEvent(name: "numberOfButtons", value: 7)
-		state.cubeMode = 1
-		displayInfoLog("Number of buttons set to 7")
+def numButtons() {
+	if (state.lastUpdated && (now() - state.lastUpdated) < 500)
+		return
+	switch(settings.cubeMode) {
+		case "1": sendEvent(name: "numberOfButtons", value: 36); break
+		case "2": sendEvent(name: "numberOfButtons", value: 43); break
+		default: sendEvent(name: "numberOfButtons", value: 7); break
 	}
+	state.lastUpdated = now()
 }
 
 // This section is functions used for driver commands
