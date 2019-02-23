@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Mi Cube Controller - model MFKZQ01LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.2.1b
+ *  Version 0.3b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -41,11 +41,9 @@ metadata {
 
 		attribute "face", "number"
 		attribute "angle", "number"
-		attribute "lastCheckin", "String"
+		attribute "lastCheckinEpoch", "String"
+		attribute "lastCheckinTime", "String"
 		attribute "batteryLastReplaced", "String"
-		attribute "buttonPressed", "String"
-		attribute "buttonHeld", "String"
-		attribute "buttonReleased", "String"
 
 		// Fingerprint data taken from ZiGate webpage http://zigate.fr/xiaomi-magic-cube-cluster
 		fingerprint endpointId: "01", profileId: "0104", deviceId: "5F01", inClusters: "0000, 0003, 0012, 0019", outClusters: "0000, 0003, 0012, 0019", manufacturer: "LUMI", model: "lumi.sensor_cube"
@@ -74,9 +72,13 @@ metadata {
 	}
 
 	preferences {
+		//Cube Mode Config
 		input (name: "cubeMode", title: "Cube Mode: Select how many buttons to control", description: "", type: "enum", options: [0: "Simple - 7 buttons", 1: "Advanced - 36 buttons", 2: "Combined - 43 buttons"])
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7)", description: "Default = 2.5 Volts", type: "decimal", range: "2..2.7"
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4)", description: "Default = 3.0 Volts", type: "decimal", range: "2.8..3.4"
+		//Battery Voltage Range
+		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
+		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
+		//Date/Time Stamp Events Config
+		input name: "lastCheckinEnable", type: "bool", title: "Enable custom date/time stamp events for lastCheckin", description: ""
 		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
@@ -85,83 +87,48 @@ metadata {
 	}
 }
 
-def setFace0() { setFace(0) }
-def setFace1() { setFace(1) }
-def setFace2() { setFace(2) }
-def setFace3() { setFace(3) }
-def setFace4() { setFace(4) }
-def setFace5() { setFace(5) }
-def flip90() {
-	def flipMap = [0:5, 1:2, 2:0, 3:2, 4:5, 5:3]
-	flipEvents(flipMap[device.currentValue("face") as Integer], "90")
-}
-def flip180() {
-	def flipMap = [0:3, 1:4, 2:5, 3:0, 4:1, 5:2]
-	flipEvents(flipMap[device.currentValue("face") as Integer], "180")
-}
-def rotateL() { rotateEvents(-90) }
-def rotateR() { rotateEvents(90) }
-def slide() { slideEvents(device.currentValue("face") as Integer) }
-def knock() { knockEvents(device.currentValue("face") as Integer) }
-def shake() { shakeEvents() }
-
-def setFace(Integer faceId) {
-	def Integer prevFaceId = device.currentValue("face")
-	if (prevFaceId == faceId) {
-		flipEvents(faceId, "0")
-	} else if ((prevFaceId == 0 && faceId == 3)||(prevFaceId == 1 && faceId == 4)||(prevFaceId == 2 && faceId == 5)||(prevFaceId == 3 && faceId == 0)||(prevFaceId == 4 && faceId == 1)||(prevFaceId == 5 && faceId == 2)){
-		flipEvents(faceId, "180")
-	} else {
-		flipEvents(faceId, "90")
-	}
-}
-
 // Parse incoming device messages to generate events
 def parse(String description) {
-	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
-	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
-	def encoding = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "encoding"}?.split(":")[1].trim(), 16)
-	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	Map map = [:]
-
-	if (!oldFirmware & valueHex != null & encoding > 0x18 & encoding < 0x3e) {
-		displayDebugLog("Data type of payload is little-endian; reversing byte order")
-		// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
-		valueHex = reverseHexString(valueHex)
-	}
-
 	displayDebugLog("Parsing message: ${description}")
-	displayDebugLog("Message payload: ${valueHex}")
-
-	// lastCheckin can be used with webCoRE
-	sendEvent(name: "lastCheckin", value: now())
-
+	if (description?.startsWith('re'))
+		description = description - "read attr - "
+	Map descMap = (description).split(",").inject([:]) {
+		map, param ->
+		def nameAndValue = param.split(":")
+		map += [(nameAndValue[0].trim()):nameAndValue[1].trim()]
+	}
+	displayDebugLog("Map of message: ${descMap}")
+	def intEncoding = Integer.parseInt(descMap.encoding, 16)
+	if (!oldFirmware && descMap.value != null && intEncoding > 0x18 && intEncoding < 0x3e) {
+		displayDebugLog("Data type of message payload is little-endian; reversing byte order")
+		// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
+		descMap.value = reverseHexString(descMap.value)
+		displayDebugLog("Reversed payload value: ${descMap.value}")
+	}
+	Map eventMap = [:]
 	// Send message data to appropriate parsing function based on the type of report
-	if (cluster == "0006") {
-		map = parseButtonMessage(Integer.parseInt(valueHex))
-	} else if (cluster == "0000" & attrId == "0005") {
+	if (descMap.cluster == "0012" && descMap.attrId == "0055") {
+		// Shake, flip, knock, slide messages
+		getMotionResult(descMap.value)
+	} else if (descMap.cluster == "000C" && descMap.attrId == "FF05") {
+		// Rotation (90 and 180 degrees)
+		getRotationResult(descMap.value)
+	} else if (descMap.cluster == "0000" && descMap.attrId == "0005") {
 		displayInfoLog("Reset button was short-pressed")
 		// Parse battery level from longer type of announcement message
-		map = (valueHex.size() > 60) ? parseBattery(valueHex.split('FF42')[1]) : [:]
-	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
+		eventMap = (descMap.value.size() > 60) ? parseBattery(descMap.value.split('FF42')[1]) : [:]
+	} else if (descMap.cluster == "0000" & (descMap.attrId == "FF01" || descMap.attrId == "FF02")) {
 		// Parse battery level from hourly announcement message
-		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
-	} else if (!(cluster == "0000" & attrId == "0001")) {
-		displayDebugLog("Unable to parse message")
-	}
-
-	if (description?.startsWith('catchall:')) {
-		parseCatchAllMessage(description)
-	}
-	else if (description?.startsWith('read attr -')) {
-		parseReportAttributeMessage(description)
-	}
-
-	if (map != [:]) {
-		displayDebugLog("Creating event $map")
-		return createEvent(map)
+		eventMap = (descMap.value.size() > 30) ? parseBattery(descMap.value) : [:]
 	} else
-		return [:]
+		displayDebugLog("Unable to parse message")
+
+	if (eventMap != [:]) {
+		displayInfoLog(eventMap.descriptionText)
+		displayDebugLog("Creating event $eventMap")
+		return createEvent(eventMap)
+	} else
+		return eventMap
 }
 
 // Reverses order of bytes in hex string
@@ -173,67 +140,17 @@ def reverseHexString(hexString) {
 	return reversed
 }
 
-// Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
-private parseBattery(description) {
-	displayDebugLog("Battery parse string = ${description}")
-	def MsgLength = description.size()
-	def rawValue
-	for (int i = 4; i < (MsgLength-3); i+=2) {
-		if (description[i..(i+1)] == "21") { // Search for byte preceeding battery voltage bytes
-			rawValue = Integer.parseInt((description[(i+4)..(i+5)] + description[(i+2)..(i+3)]),16)
-			break
-		}
-	}
-	def rawVolts = rawValue / 1000
-	def minVolts = voltsmin ? voltsmin : 2.5
-	def maxVolts = voltsmax ? voltsmax : 3.0
-	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
-	def roundedPct = Math.min(100, Math.round(pct * 100))
-	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
-	displayInfoLog(descText)
-	def result = [
-		name: 'battery',
-		value: roundedPct,
-		unit: "%",
-		isStateChange: true,
-		descriptionText: descText
-	]
-	return result
-}
-
-private Map parseReportAttributeMessage(String description) {
-	Map descMap = (description - "read attr - ").split(",").inject([:]) {
-		map, param ->
-		def nameAndValue = param.split(":")
-		map += [(nameAndValue[0].trim()):nameAndValue[1].trim()]
-	}
-	displayDebugLog("Cluster: ${descMap.cluster}, Attribute ID: ${descMap.attrId}, Value: ${descMap.value}")
-	if (descMap.cluster == "0012" && descMap.attrId == "0055") { // Shake, flip, knock, slide
-		displayInfoLog("Shake, flip, knock, or slide detected")
-		getMotionResult(descMap.value)
-	} else if (descMap.cluster == "000C" && descMap.attrId == "ff05") { // Rotation (90 and 180 degrees)
-		displayInfoLog("Rotation detected")
-		getRotationResult(descMap.value)
-	} else {
-		displayDebugLog("Unknown Cluster / Attribute ID")
-	}
-}
-
-def String hexToBin(String thisByte, Integer size = 8) {
-	String binaryValue = new BigInteger(thisByte, 16).toString(2);
-	return String.format("%${size}s", binaryValue).replace(' ', '0')
-}
-
 private Map getMotionResult(String value) {
 	String motionType = value[0..1]
 	String binaryValue = hexToBin(value[2..3])
 	Integer sourceFace = Integer.parseInt(binaryValue[2..4],2)
 	Integer targetFace = Integer.parseInt(binaryValue[5..7],2)
-	log.debug "motionType: ${motionType}, binaryValue: ${binaryValue}, sourceFace: ${sourceFace}, targetFace: ${targetFace}"
+	displayDebugLog("motionType: $motionType, binaryValue: $binaryValue, sourceFace: $sourceFace, targetFace: $targetFace")
 	if (motionType == "00") {
 		switch(binaryValue[0..1]) {
 			case "00":
-				if (targetFace==0) { shakeEvents() }
+				if (targetFace == 0)
+					shakeEvents()
 				break
 			case "01":
 				flipEvents(targetFace, "90")
@@ -250,165 +167,269 @@ private Map getMotionResult(String value) {
 }
 
 private Map getRotationResult(value) {
-	Integer angle = Math.round(Float.intBitsToFloat(Long.parseLong(value[0..7],16).intValue()));
+	Integer angle = Math.round(Float.intBitsToFloat(Long.parseLong(value[0..7],16).intValue()))
 	rotateEvents(angle)
 }
 
+def String hexToBin(String thisByte, Integer size = 8) {
+	String binaryValue = new BigInteger(thisByte, 16).toString(2);
+	return String.format("%${size}s", binaryValue).replace(' ', '0')
+}
+
 def Map shakeEvents() {
+	def descText
 	if (!settings.cubeMode || settings.cubeMode in ['0','2'] ) {
+		descText = (settings.cubeMode == '0') ? "Shake detected (button 1 pushed)" : null
 		sendEvent([
 			name: "pushed",
 			value: 1,
 			data: [face: device.currentValue("face")],
-			descriptionText: (settings.cubeMode == '0') ? "$device.displayName was shaken" : null,
-			isStateChange: true,
+			descriptionText: descText,
 		])
+		if (descText)
+			displayInfoLog(descText)
 	}
-
 	if (settings.cubeMode in ['1','2'] ){
+		def buttonNum = (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 31 : 38)
+		descText = "Shake detected with face #${device.currentValue("face")} up (button $buttonNum pushed)"
 		sendEvent([
 			name: "pushed",
-			value: (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 31 : 38),
+			value: buttonNum,
 			data: [face: device.currentValue("face")],
-			descriptionText: "$device.displayName was shaken (Face # ${device.currentValue("face")}).",
-			isStateChange: true])
+			descriptionText: descText,
+		])
+		displayInfoLog(descText)
 	}
 }
 
 def flipEvents(Integer faceId, String flipType) {
+	def descText
 	if (flipType == "0") {
-		sendEvent( [name: 'face', value: -1, isStateChange: false] )
-		sendEvent( [name: 'face', value: faceId, isStateChange: false] )
+		sendEvent([
+			name: 'face',
+			value: -1,
+			isStateChange: false
+		])
+		sendEvent([
+			name: 'face',
+			value: faceId,
+			isStateChange: false
+		])
 	} else if (flipType == "90") {
+		descText = (settings.cubeMode == '0') ? "90° flip detected (button 2 pushed)" : null
 		if (settings.cubeMode in ['0','2']) {
-			sendEvent( [
+			sendEvent([
 				name: "pushed",
 				value: 2 ,
 				data: [face: faceId],
-				descriptionText: (settings.cubeMode == '0') ? "$device.displayName detected $flipType degree flip" : null,
-				isStateChange: true,
-			] )
+				descriptionText: descText,
+			])
+			if (descText)
+				displayInfoLog(descText)
 		}
 	} else if (flipType == "180") {
+		descText = (settings.cubeMode == '0') ? "180° flip detected (button 3 pushed)" : null
 		if (settings.cubeMode in ['0','2']) {
-			sendEvent( [
+			sendEvent([
 				name: "pushed",
 				value: 3 ,
 				data: [face: faceId],
-				descriptionText: (settings.cubeMode == '0') ? "$device.displayName detected $flipType degree flip" : null,
-				isStateChange: true,
-			] )
+				descriptionText: descText,
+			])
+			if (descText)
+				displayInfoLog(descText)
 		}
 	}
-	sendEvent( [name: 'face', value: faceId, isStateChange: true, displayed: false ] )
+	sendEvent([
+		name: 'face',
+		value: faceId,
+		displayed: false
+	])
 	if (settings.cubeMode in ['1','2']) {
-		sendEvent( [
+		def buttonNum = faceId + ((settings.cubeMode == '1') ? 1 : 8)
+		descText = "Flip to face #$faceId detected (button $buttonNum pushed)"
+		sendEvent([
 			name: "pushed",
-			value: faceId+((settings.cubeMode == '1') ? 1 : 8),
+			value: buttonNum,
 			data: [face: faceId],
-			descriptionText: "$device.displayName was fliped to face # $faceId",
-			isStateChange: true
-	   ] )
+			descriptionText: descText,
+		])
+		displayInfoLog(descText)
 	}
 	switch (faceId) {
-		case 0: sendEvent( [ name: "threeAxis", value: "0,-1000,0", isStateChange: true, displayed: false] ); break
-		case 1: sendEvent( [ name: "threeAxis", value: "-1000,0,0", isStateChange: true, displayed: false] ); break
-		case 2: sendEvent( [ name: "threeAxis", value: "0,0,1000", isStateChange: true, displayed: false] ); break
-		case 3: sendEvent( [ name: "threeAxis", value: "1000,0,0", isStateChange: true, displayed: false] ); break
-		case 4: sendEvent( [ name: "threeAxis", value: "0,1000,0", isStateChange: true, displayed: false] ); break
-		case 5: sendEvent( [ name: "threeAxis", value: "0,0,-1000", isStateChange: true, displayed: false] ); break
+		case 0: sendEvent([name: "threeAxis", value: "0,-1000,0", displayed: false]); break
+		case 1: sendEvent([name: "threeAxis", value: "-1000,0,0", displayed: false]); break
+		case 2: sendEvent([name: "threeAxis", value: "0,0,1000", displayed: false]); break
+		case 3: sendEvent([name: "threeAxis", value: "1000,0,0", displayed: false]); break
+		case 4: sendEvent([name: "threeAxis", value: "0,1000,0", displayed: false]); break
+		case 5: sendEvent([name: "threeAxis", value: "0,0,-1000", displayed: false]); break
 	}
 }
 
 def Map slideEvents(Integer targetFace) {
-	if ( targetFace != device.currentValue("face") as Integer ) { log.info "Stale face data, updating."; setFace(targetFace) }
-	if (!settings.cubeMode || settings.cubeMode in ['0','2'] ) {
-		sendEvent( [
+	def descText
+	if (targetFace != device.currentValue("face") as Integer) {
+		displayInfoLog("Stale face data, updating")
+		setFace(targetFace)
+	}
+	if (!settings.cubeMode || settings.cubeMode in ['0','2']) {
+		descText = (settings.cubeMode == '0') ? "Slide detected (button 4 pushed)" : null
+		sendEvent([
 			name: "pushed",
 			value: 4,
 			data: [face: targetFace],
-			descriptionText: (settings.cubeMode == '0') ? "$device.displayName detected slide motion." : null,
-			isStateChange: true,
-		]  )
+			descriptionText: descText,
+		])
+		if (descText)
+			displayInfoLog(descText)
 	}
-
-	if ( settings.cubeMode in ['1','2'] ) {
-		sendEvent( [
+	if (settings.cubeMode in ['1','2']) {
+		def buttonNum = targetFace+((settings.cubeMode == '1') ? 7 : 14)
+		descText = "Slide detected with face #$targetFace up (button $buttonNum pushed)"
+		sendEvent([
 			name: "pushed",
-			value: targetFace+((settings.cubeMode == '1') ? 7 : 14),
+			value: buttonNum,
 			data: [face: targetFace],
-			descriptionText: "$device.displayName was slid with face # $targetFace up.",
-			isStateChange: true
-		] ) }
+			descriptionText: descText,
+		])
+		displayInfoLog(descText)
+	}
 }
 
 def knockEvents(Integer targetFace) {
-	if ( targetFace != device.currentValue("face") as Integer ) { log.info "Stale face data, updating."; setFace(targetFace) }
-	if (!settings.cubeMode || settings.cubeMode in ['0','2'] ) {
-		sendEvent( [
+	def descText
+	if (targetFace != device.currentValue("face") as Integer) {
+		displayInfoLog("Stale face data, updating")
+		setFace(targetFace)
+	}
+	if (!settings.cubeMode || settings.cubeMode in ['0','2']) {
+		descText = (settings.cubeMode == '0') ? "Knock detected (button 5 pushed)" : null
+		sendEvent([
 			name: "pushed",
 			value: 5,
 			data: [face: targetFace],
-			descriptionText: (settings.cubeMode == '0') ? "$device.displayName detected knock motion." : null,
-			isStateChange: true,
-		] )
+			descriptionText: descText,
+		])
+		if (descText)
+			displayInfoLog(descText)
 	}
-	if ( settings.cubeMode in ['1','2'] ) {
-		sendEvent( [
+	if (settings.cubeMode in ['1','2']) {
+		def buttonNum = targetFace+((settings.cubeMode == '1') ? 13 : 20)
+		descText = "Knock detected with face #$targetFace up (button $buttonNum pushed)"
+		sendEvent([
 			name: "pushed",
-			value: targetFace+((settings.cubeMode == '1') ? 13 : 20),
+			value: buttonNum,
 			data: [face: targetFace],
-			descriptionText: "$device.displayName was knocked with face # $targetFace up",
-			isStateChange: true
-		] )
+			descriptionText: descText,
+		])
+		displayInfoLog(descText)
 	 }
 }
 
 def rotateEvents(Integer angle) {
-	sendEvent( [ name: "angle", value: angle, isStateChange: true, displayed: false] )
-	if ( angle > 0 ) {
+	sendEvent([
+		name: "angle",
+		value: angle,
+		isStateChange: true,
+		displayed: false
+	])
+	displayInfoLog("Rotated by $angle°")
+	def descText
+	def buttonNum
+	if (angle > 0) {
 		if (!settings.cubeMode || settings.cubeMode in ['0','2'] ) {
-			sendEvent( [
+			descText = (settings.cubeMode == '0') ? "Right rotation (button 6 pushed)" : null
+			sendEvent([
 				name: "pushed",
 				value: 6,
 				data: [face: device.currentValue("face"), angle: angle],
-				descriptionText: (settings.cubeMode == '0') ? "$device.displayName was rotated right." : null,
-				isStateChange: true,
-			] )
+				descriptionText: descText,
+			])
+			if (descText)
+				displayInfoLog(descText)
 		}
-		if ( settings.cubeMode in ['1','2'] ) {
-			sendEvent( [
+		if (settings.cubeMode in ['1','2']) {
+			buttonNum = (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 19 : 26)
+			descText = "Right rotation on face #${device.currentValue("face")} (button $buttonNum pushed)"
+			sendEvent([
 				name: "pushed",
-				value: (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 19 : 26),
+				value: buttonNum,
 				data: [face: device.currentValue("face")],
-				descriptionText: "$device.displayName was rotated right (Face # ${device.currentValue("face")}).",
-				isStateChange: true
-			] )
+				descriptionText: descText,
+			])
+			displayInfoLog(descText)
 		}
 	} else {
-		if (!settings.cubeMode || settings.cubeMode in ['0','2'] ) {
-			sendEvent( [
+		if (!settings.cubeMode || settings.cubeMode in ['0','2']) {
+			descText = (settings.cubeMode == '0') ? "Left rotation (button 7 pushed)" : null
+			sendEvent([
 				name: "pushed",
 				value: 7,
 				data: [face: device.currentValue("face"), angle: angle],
-				descriptionText: (settings.cubeMode == '0') ? "$device.displayName was rotated left." : null,
-				isStateChange: true,
-			] )
+				descriptionText: descText,
+			])
+			if (descText)
+				displayInfoLog(descText)
 		}
-		if ( settings.cubeMode in ['1','2'] ) {
-			sendEvent( [
+		if (settings.cubeMode in ['1','2']) {
+			buttonNum = (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 25 : 32)
+			descText = "Left rotation on face #${device.currentValue("face")} (button $buttonNum pushed)"
+			sendEvent([
 				name: "pushed",
-				value: (device.currentValue("face") as Integer) + ((settings.cubeMode == '1') ? 25 : 32),
+				value: buttonNum,
 				data: [face: device.currentValue("face")],
-				descriptionText: "$device.displayName was rotated left (Face # ${device.currentValue("face")}).",
-				isStateChange: true
-			] )
+				descriptionText: descText,
+			])
+			displayInfoLog(descText)
 		}
 	}
 }
 
+def setFace(Integer faceId) {
+	def Integer prevFaceId = device.currentValue("face")
+	if (prevFaceId == faceId) {
+		flipEvents(faceId, "0")
+	} else if ((prevFaceId == 0 && faceId == 3)||(prevFaceId == 1 && faceId == 4)||(prevFaceId == 2 && faceId == 5)||(prevFaceId == 3 && faceId == 0)||(prevFaceId == 4 && faceId == 1)||(prevFaceId == 5 && faceId == 2)){
+		flipEvents(faceId, "180")
+	} else {
+		flipEvents(faceId, "90")
+	}
+}
+
+// Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
+private parseBattery(description) {
+	displayDebugLog("Battery parse string = ${description}")
+	def MsgLength = description.size()
+	def rawValue
+	for (int i = 4; i < (MsgLength-3); i+=2) {
+		if (description[i..(i+1)] == "21") { // Search for byte preceeding battery voltage bytes
+			rawValue = Integer.parseInt((description[(i+4)..(i+5)] + description[(i+2)..(i+3)]),16)
+			break
+		}
+	}
+	def rawVolts = rawValue / 1000
+	def minVolts = voltsmin ? voltsmin : 2.9
+	def maxVolts = voltsmax ? voltsmax : 3.05
+	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
+	def roundedPct = Math.min(100, Math.round(pct * 100))
+	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
+	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
+	if (lastCheckinEnable) {
+		sendEvent(name: "lastCheckinEpoch", value: now())
+		sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
+	}
+	def result = [
+		name: 'battery',
+		value: roundedPct,
+		unit: "%",
+		descriptionText: descText
+	]
+	return result
+}
+
 private def displayDebugLog(message) {
-	if (debugLogging) log.debug "${device.displayName}: ${message}"
+	if (debugLogging)
+		log.debug "${device.displayName}: ${message}"
 }
 
 private def displayInfoLog(message) {
@@ -421,18 +442,6 @@ def resetBatteryReplacedDate(paired) {
 	def newlyPaired = paired ? " for newly paired sensor" : ""
 	sendEvent(name: "batteryLastReplaced", value: new Date())
 	displayInfoLog("Setting Battery Last Replaced to current date${newlyPaired}")
-}
-
-// this call is here to avoid Groovy errors when the Push command is used
-// it is empty because the Xioami button is non-controllable
-def push() {
-	displayDebugLog("No action taken on Push Command. This button cannot be controlled.")
-}
-
-// this call is here to avoid Groovy errors when the Hold command is used
-// it is empty because the Xioami button is non-controllable
-def hold() {
-	displayDebugLog("No action taken on Hold Command. This button cannot be controlled!")
 }
 
 // installed() runs just after a device is paired
@@ -473,4 +482,47 @@ def numButtons() {
 		default: sendEvent(name: "numberOfButtons", value: 7); break
 	}
 	state.lastUpdated = now()
+}
+
+// This section is functions used for driver commands
+def setFace0() {
+	setFace(0)
+}
+def setFace1() {
+	setFace(1)
+}
+def setFace2() {
+	setFace(2)
+}
+def setFace3() {
+	setFace(3)
+}
+def setFace4() {
+	setFace(4)
+}
+def setFace5() {
+	setFace(5)
+}
+def flip90() {
+	def flipMap = [0:5, 1:2, 2:0, 3:2, 4:5, 5:3]
+	flipEvents(flipMap[device.currentValue("face") as Integer], "90")
+}
+def flip180() {
+	def flipMap = [0:3, 1:4, 2:5, 3:0, 4:1, 5:2]
+	flipEvents(flipMap[device.currentValue("face") as Integer], "180")
+}
+def rotateL() {
+	rotateEvents(-90)
+}
+def rotateR() {
+	rotateEvents(90)
+}
+def slide() {
+	slideEvents(device.currentValue("face") as Integer)
+}
+def knock() {
+	knockEvents(device.currentValue("face") as Integer)
+}
+def shake() {
+	shakeEvents()
 }
