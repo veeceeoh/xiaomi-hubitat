@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Mi Cube Controller - model MFKZQ01LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.3.1b
+ *  Version 0.3.2b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -182,6 +182,7 @@ def Map shakeEvents() {
 			value: 1,
 			data: [face: device.currentValue("face")],
 			descriptionText: descText,
+			isStateChange: true
 		])
 		if (descText)
 			displayInfoLog(descText)
@@ -194,6 +195,7 @@ def Map shakeEvents() {
 			value: buttonNum,
 			data: [face: device.currentValue("face")],
 			descriptionText: descText,
+			isStateChange: true
 		])
 		displayInfoLog(descText)
 	}
@@ -220,6 +222,7 @@ def flipEvents(Integer faceId, String flipType) {
 				value: 2 ,
 				data: [face: faceId],
 				descriptionText: descText,
+				isStateChange: true
 			])
 			if (descText)
 				displayInfoLog(descText)
@@ -232,6 +235,7 @@ def flipEvents(Integer faceId, String flipType) {
 				value: 3 ,
 				data: [face: faceId],
 				descriptionText: descText,
+				isStateChange: true
 			])
 			if (descText)
 				displayInfoLog(descText)
@@ -250,16 +254,17 @@ def flipEvents(Integer faceId, String flipType) {
 			value: buttonNum,
 			data: [face: faceId],
 			descriptionText: descText,
+			isStateChange: true
 		])
 		displayInfoLog(descText)
 	}
 	switch (faceId) {
-		case 0: sendEvent([name: "threeAxis", value: "0,-1000,0", displayed: false]); break
-		case 1: sendEvent([name: "threeAxis", value: "-1000,0,0", displayed: false]); break
-		case 2: sendEvent([name: "threeAxis", value: "0,0,1000", displayed: false]); break
-		case 3: sendEvent([name: "threeAxis", value: "1000,0,0", displayed: false]); break
-		case 4: sendEvent([name: "threeAxis", value: "0,1000,0", displayed: false]); break
-		case 5: sendEvent([name: "threeAxis", value: "0,0,-1000", displayed: false]); break
+		case 0: sendEvent([name: "threeAxis", value: "0,-1000,0"]); break
+		case 1: sendEvent([name: "threeAxis", value: "-1000,0,0"]); break
+		case 2: sendEvent([name: "threeAxis", value: "0,0,1000"]); break
+		case 3: sendEvent([name: "threeAxis", value: "1000,0,0"]); break
+		case 4: sendEvent([name: "threeAxis", value: "0,1000,0"]); break
+		case 5: sendEvent([name: "threeAxis", value: "0,0,-1000"]); break
 	}
 }
 
@@ -276,6 +281,7 @@ def Map slideEvents(Integer targetFace) {
 			value: 4,
 			data: [face: targetFace],
 			descriptionText: descText,
+			isStateChange: true
 		])
 		if (descText)
 			displayInfoLog(descText)
@@ -288,6 +294,7 @@ def Map slideEvents(Integer targetFace) {
 			value: buttonNum,
 			data: [face: targetFace],
 			descriptionText: descText,
+			isStateChange: true
 		])
 		displayInfoLog(descText)
 	}
@@ -306,6 +313,7 @@ def knockEvents(Integer targetFace) {
 			value: 5,
 			data: [face: targetFace],
 			descriptionText: descText,
+			isStateChange: true
 		])
 		if (descText)
 			displayInfoLog(descText)
@@ -318,6 +326,7 @@ def knockEvents(Integer targetFace) {
 			value: buttonNum,
 			data: [face: targetFace],
 			descriptionText: descText,
+			isStateChange: true
 		])
 		displayInfoLog(descText)
 	 }
@@ -327,8 +336,7 @@ def rotateEvents(Integer angle) {
 	sendEvent([
 		name: "angle",
 		value: angle,
-		isStateChange: true,
-		displayed: false
+		isStateChange: true
 	])
 	displayInfoLog("Rotated by $angle°")
 	def descText
@@ -341,6 +349,7 @@ def rotateEvents(Integer angle) {
 				value: 6,
 				data: [face: device.currentValue("face"), angle: angle],
 				descriptionText: descText,
+				isStateChange: true
 			])
 			if (descText)
 				displayInfoLog(descText)
@@ -353,6 +362,7 @@ def rotateEvents(Integer angle) {
 				value: buttonNum,
 				data: [face: device.currentValue("face")],
 				descriptionText: descText,
+				isStateChange: true
 			])
 			displayInfoLog(descText)
 		}
@@ -364,6 +374,7 @@ def rotateEvents(Integer angle) {
 				value: 7,
 				data: [face: device.currentValue("face"), angle: angle],
 				descriptionText: descText,
+				isStateChange: true
 			])
 			if (descText)
 				displayInfoLog(descText)
@@ -376,6 +387,7 @@ def rotateEvents(Integer angle) {
 				value: buttonNum,
 				data: [face: device.currentValue("face")],
 				descriptionText: descText,
+				isStateChange: true
 			])
 			displayInfoLog(descText)
 		}
