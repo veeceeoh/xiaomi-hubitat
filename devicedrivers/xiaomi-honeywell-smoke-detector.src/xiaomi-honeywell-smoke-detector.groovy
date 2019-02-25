@@ -110,7 +110,8 @@ def parse(String description) {
 				displayDebugLog("Unable to parse read attribute message")
 			}
 		}
-		displayInfoLog(map.descriptionText)
+		if (result.descriptionText)
+			displayInfoLog(result.descriptionText)
 	}
 	if (result) {
 		displayDebugLog("Creating event $result")
