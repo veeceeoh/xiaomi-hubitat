@@ -2,7 +2,7 @@
  * Xiaomi "Original" Temperature Humidity Sensor - model RTCGQ01LM
  * & Aqara Temperature Humidity Sensor - model WSDCGQ11LM
  * Device Driver for Hubitat Elevation hub
- * Version 0.8.1
+ * Version 0.8.2
  *
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -32,12 +32,13 @@
 
 metadata {
 	definition (name: "Xiaomi Temperature Humidity Sensor", namespace: "veeceeoh", author: "veeceeoh") {
-		capability "Temperature Measurement"
-		capability "Relative Humidity Measurement"
-		capability "Sensor"
 		capability "Battery"
+		capability "PressureMeasurement"
+		capability "RelativeHumidityMeasurement"
+		capability "Sensor"
+		capability "TemperatureMeasurement"
 
-		attribute "pressure", "Decimal"
+
 		attribute "lastCheckinEpoch", "String"
 		attribute "lastCheckinTime", "Date"
 		attribute "batteryLastReplaced", "String"
@@ -53,9 +54,9 @@ metadata {
 	preferences {
 		//Temp and Humidity Offsets
 		input "tempOffset", "decimal", title:"Temperature Offset", description:"", range:"*..*"
-		input "humidOffset", "decimal", title:"Humidity Offset", description:"", range: "*..*"
+		input "humidityOffset", "decimal", title:"Humidity Offset", description:"", range: "*..*"
 		input "pressOffset", "decimal", title:"Pressure Offset (Aqara model only)", description:"", range: "*..*"
-		input name:"PressureUnits", type:"enum", title:"Pressure Units (Aqara model only)", description:"", options:["mbar", "kPa", "inHg", "mmHg"]
+		input name:"pressureUnits", type:"enum", title:"Pressure Units (Aqara model only)", description:"", options:["mbar", "kPa", "inHg", "mmHg"]
 		//Battery Voltage Range
 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
@@ -106,7 +107,7 @@ def parse(String description) {
 		displayDebugLog("Creating event $map")
 		return createEvent(map)
 	} else
-		return [:]
+		return map
 }
 
 // Reverses order of bytes in hex string
@@ -118,19 +119,19 @@ def reverseHexString(hexString) {
 	return reversed
 }
 
-// Calculate temperature with 0.1 precision in C or F unit as set by hub location settings
+// Calculate temperature with 0.01 precision in C or F unit as set by hub location settings
 private parseTemperature(description) {
 	float temp = Integer.parseInt(description,16)/100
-	def offset = tempOffset ? tempOffset : 0
 	temp = (temp > 100) ? (temp - 655.35) : temp
 	displayDebugLog("Raw reported temperature = ${temp}°C")
-	temp = (temperatureScale == "F") ? ((temp * 1.8) + 32) + offset : temp + offset
-	temp = temp.round(1)
+	temp = (location.temperatureScale == "F") ? ((temp * 1.8) + 32) : temp
+	temp = tempOffset ? (temp + tempOffset) : temp
+	temp = temp.round(2)
 	return [
 		name: 'temperature',
 		value: temp,
-		unit: "${temperatureScale}",
-		descriptionText: "Temperature is ${temp}°${temperatureScale}",
+		unit: "°${location.temperatureScale}",
+		descriptionText: "Temperature is ${temp}°${location.temperatureScale}",
 		translatable:true
 	]
 }
@@ -152,11 +153,11 @@ private parseHumidity(description) {
 // Parse pressure report
 private parsePressure(description) {
 	float pressureval = Integer.parseInt(description[0..3], 16)
-	if (!(PressureUnits)) {
-		PressureUnits = "mbar"
+	if (!(pressureUnits)) {
+		pressureUnits = "mbar"
 	}
-	displayDebugLog("Converting ${pressureval} to ${PressureUnits}")
-	switch (PressureUnits) {
+	displayDebugLog("Converting ${pressureval} to ${pressureUnits}")
+	switch (pressureUnits) {
 		case "mbar":
 			pressureval = (pressureval/10) as Float
 			pressureval = pressureval.round(1);
@@ -180,8 +181,8 @@ private parsePressure(description) {
 	return [
 		name: 'pressure',
 		value: pressureval,
-		unit: PressureUnits,
-		descriptionText: "Pressure is ${pressureval} ${PressureUnits}"
+		unit: pressureUnits,
+		descriptionText: "Pressure is ${pressureval} ${pressureUnits}"
 	]
 }
 
@@ -190,12 +191,12 @@ private parseBattery(description) {
 	displayDebugLog("Battery parse string = ${description}")
 	def rawValue = Integer.parseInt((description[8..9] + description[6..7]),16)
 	def rawVolts = rawValue / 1000
-	def minVolts = voltsmin ? voltsmin : 2.5
-	def maxVolts = voltsmax ? voltsmax : 3.0
+	def minVolts = voltsmin ? voltsmin : 2.9
+	def maxVolts = voltsmax ? voltsmax : 3.05
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
 	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
-	def result = [
+	return [
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
