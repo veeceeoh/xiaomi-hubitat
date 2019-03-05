@@ -2,7 +2,7 @@
  *  Xiaomi Aqara Wireless Smart Light Switch
  *  2016 & 2018 revisions of models WXKG03LM (1 button) and WXKG02LM (2 buttons)
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7.5b
+ *  Version 0.8
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
