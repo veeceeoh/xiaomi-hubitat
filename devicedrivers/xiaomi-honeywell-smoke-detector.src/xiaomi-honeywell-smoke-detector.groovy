@@ -1,7 +1,7 @@
 /**
  *  Xiaomi MiJia Honeywell Smoke Detector model JTYJ-GD-01LM/BW
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.6b
+ *  Version 0.6
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -39,7 +39,7 @@ metadata {
 		capability "Configuration"
 		capability "Sensor"
 		capability "Smoke Detector"
-		capability "TestCapability"	
+		capability "TestCapability"
 		// attributes: smoke ("detected","clear","tested")
 
 		command "resetBatteryReplacedDate"
@@ -60,6 +60,8 @@ metadata {
 	}
 
 	preferences {
+		// Smoke Sensitivity Level Config
+		input name: "sensLevel", type: "enum", title: "Smoke sensitivity level", description: "", options: [[0x04010000:"High"],[0x04020000:"Medium"],[0x04030000:"Low"]], defaultValue: 0x04010000, required: true
 		//Battery Voltage Range
 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.7). Default = 2.5 Volts", description: "", type: "decimal", range: "2..2.7"
 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.8 to 3.4). Default = 3.0 Volts", description: "", type: "decimal", range: "2.8..3.4"
@@ -71,7 +73,6 @@ metadata {
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 		//Firmware 2.0.5 Compatibility Fix Config
 		input name: "oldFirmware", type: "bool", title: "DISABLE 2.0.5 firmware compatibility fix (for users of 2.0.4 or earlier)", description: ""
-		input name: "sensitivity", type: "enum", title: "Smoke sensitivity", description: "", options: [[0x04010000:"Smoke free area"],[0x04020000:"Slight amount of smoke"],[0x04030000:"Medium amount of smoke"]], defaultValue: 0x04010000, required: true
 	}
 }
 
@@ -121,19 +122,6 @@ def parse(String description) {
 		return createEvent(result)
 	} else
 		return [:]
-}
-
-def test() { // A beep indicates normal operation
-	return zigbee.writeAttribute(0x0500, 0xFFF1, DataType.UINT32, 0x03010000, [mfgCode: "0x115F"])
-}
-
-// Reverses order of bytes in hex string
-def reverseHexString(hexString) {
-	def reversed = ""
-	for (int i = hexString.length(); i > 0; i -= 2) {
-		reversed += hexString.substring(i - 2, i )
-	}
-	return reversed
 }
 
 // Parse IAS Zone Status message (0 = clear, 1 = detected, or 3 = tested)
@@ -187,6 +175,11 @@ def resetToClear() {
 	sendEvent(name:"smoke", value:"clear")
 }
 
+def test() {
+	// Sends a command to sensor to complete self-test. An alarm beep indicates normal operation.
+	return zigbee.writeAttribute(0x0500, 0xFFF1, DataType.UINT32, 0x03010000, [mfgCode: "0x115F"])
+}
+
 private def displayDebugLog(message) {
 	if (debugLogging)
 		log.debug "${device.displayName}: ${message}"
@@ -229,7 +222,8 @@ def updated() {
 def init() {
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
-	
-	displayInfoLog("Setting sensitivity to ${sensitivity}")
-	zigbee.writeAttribute(0x0500, 0xFFF1, DataType.UINT32, Integer.parseInt(sensitivity), [mfgCode: "0x115F"])
+	if (sensLevel) {
+		displayInfoLog("Setting smoke sensitivity level to ${sensLevel}")
+		zigbee.writeAttribute(0x0500, 0xFFF1, DataType.UINT32, Integer.parseInt(sensitivity), [mfgCode: "0x115F"])
+	}
 }
