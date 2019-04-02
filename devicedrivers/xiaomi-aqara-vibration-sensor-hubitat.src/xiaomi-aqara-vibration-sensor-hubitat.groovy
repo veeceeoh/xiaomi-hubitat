@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Aqara Vibration Sensor - model DJT11LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7.3b
+ *  Version 0.8b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -38,7 +38,6 @@ metadata {
 		capability "Contact Sensor"
 		capability "Motion Sensor"
 		capability "PushableButton"
-		capability "Refresh"
 		capability "Sensor"
 
 		attribute "activityLevel", "String"
@@ -62,6 +61,9 @@ metadata {
 		command "resetBatteryReplacedDate"
 		command "setOpenPosition"
 		command "setClosedPosition"
+		command "SetSensitivityLevelToLow"
+		command "SetSensitivityLevelToMedium"
+		command "SetSensitivityLevelToHigh"
 	}
 
 	preferences {
@@ -69,6 +71,8 @@ metadata {
 		input "motionreset", "number", title: "After vibration/movement is detected, wait ___ second(s) until resetting 'motion active' to 'inactive'. (default = 65)", description: "", range: "1..7200"
 		//3-Axis Angle Open/Close Position Range Margin of Error Config
 		input name: "marginOfError", title: "Margin of error to use comparing sensor position to user-set open/close positions (default = 10.0)", description: "", type: "decimal", range: "0..100"
+		//Sensitivity "Lock" Config
+		input name: "enableSensCommands", type: "bool", title: "Enable sensitivity level change command 'buttons' (DISABLES reset button level change mechanism)", description: ""
 		//Battery Voltage Range
 		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
 		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
@@ -85,64 +89,68 @@ metadata {
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
-	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
-	def encoding = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "encoding"}?.split(":")[1].trim(), 16)
-	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	def eventType
-	Map map = [:]
-	def cmds = []
-
-	if (!oldFirmware & valueHex != null & encoding > 0x18 & encoding < 0x3e) {
-		displayDebugLog("Data type of payload is little-endian; reversing byte order")
-		// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
-		valueHex = reverseHexString(valueHex)
-	}
-
 	displayDebugLog("Parsing message: ${description}")
-	displayDebugLog("Message payload: ${valueHex}")
-
-	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
-	if (lastCheckinEnable) {
-		sendEvent(name: "lastCheckinEpoch", value: now())
-		sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
-	}
-
-	// Send message data to appropriate parsing function based on the type of report
-	if (attrId == "0055") {
-	// Handles vibration (value 01), tilt (value 02), and drop (value 03) event messages
-		if (valueHex?.endsWith('0002')) {
-			eventType = 2
-			parseTiltAngle(valueHex[0..3])
-		} else {
-			eventType = Integer.parseInt(valueHex,16)
+	Map eventMap = [:]
+	def eventType
+	if (description?.startsWith('re')) {
+		description = description - "read attr - "
+		Map descMap = (description).split(",").inject([:]) {
+			map, param ->
+			def nameAndValue = param.split(":")
+			map += [(nameAndValue[0].trim()):nameAndValue[1].trim()]
 		}
-		map = mapSensorEvent(eventType)
-	} else if (attrId == "0508") {
-		// Handles XYZ Accelerometer values to determine position
-		convertAccelValues(valueHex)
-	} else if (attrId == "0505") {
-		// Handles recent activity level value reports
-		map = mapActivityLevel(valueHex)
-	} else if (cluster == "0000" & attrId == "0005") {
-		displayDebugLog "Reset button was short-pressed"
-		// Change sensitivity level
-		cmds = changeSensitivity()
-	} else if (cluster == "0000" & (attrId == "FF01" || attrId == "FF02")) {
-		// Parse battery level from hourly announcement message
-		map = (valueHex.size() > 30) ? parseBattery(valueHex) : [:]
-	} else if (!(cluster == "0000" & attrId == "0001")) {
-		displayDebugLog "Unable to parse ${description}"
-	}
-
-	if (map != [:]) {
-		displayDebugLog("Creating event $map")
-		return createEvent(map)
-	} else if (cmds != []) {
-		displayDebugLog("Sending commands $cmds")
-		return cmds
+		displayDebugLog("Map of message: ${descMap}")
+		def intEncoding = Integer.parseInt(descMap.encoding, 16)
+		if (!oldFirmware && descMap.value != null && intEncoding > 0x18 && intEncoding < 0x3e) {
+			displayDebugLog("Data type of message payload is little-endian; reversing byte order")
+			// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
+			descMap.value = reverseHexString(descMap.value)
+			displayDebugLog("Reversed payload value: ${descMap.value}")
+		}
+		// Send message data to appropriate parsing function based on the type of report
+		if (descMap.attrId == "0055") {
+			// Handles vibration (value 01), tilt (value 02), and drop (value 03) event messages
+			if (descMap.value?.endsWith('0002')) {
+				eventType = 2
+				parseTiltAngle(descMap.value[0..3])
+			} else {
+				eventType = Integer.parseInt(descMap.value,16)
+			}
+			eventMap = mapSensorEvent(eventType)
+		} else if (descMap.attrId == "0508") {
+			// Handles XYZ Accelerometer values to determine position
+			convertAccelValues(descMap.value)
+		} else if (descMap.attrId == "0505") {
+			// Handles recent activity level value reports
+			eventMap = mapActivityLevel(descMap.value)
+		} else if (descMap.cluster == "0000" & descMap.attrId == "0005") {
+			displayDebugLog "Reset button was short-pressed"
+			if (descMap.value.length() > 45)
+				eventMap = parseBattery(descMap.value.split("01FF")[1])
+			if (!enableSensCommands) {
+				if (state.sensChangeRequested == true) {
+					state.sensChangeRequested = false
+				} else {
+					// set requested level to next in sequence - low > medium > high > low, etc.
+					state.requestedSensLevel = (state.currentSensLevel == null || state.currentSensLevel == 2) ? 0 : state.currentSensLevel + 1
+					// Send sensitivity level change command in 300 milliseconds
+					runInMillis(300, sendSensLevelCommand)
+					state.sensChangeRequested = true
+				}
+			}
+		} else if (descMap.cluster == "0000" & (descMap.attrId == "FF01" || descMap.attrId == "FF02")) {
+			// Parse battery level from hourly announcement message
+			eventMap = (descMap.value.size() > 30) ? parseBattery(descMap.value) : [:]
+		} else
+			displayDebugLog "Unknown read attribute message type, message not parsed"
+	} else if (description?.startsWith('cat')) {
+		eventMap = changeSensLevelEvent()
 	} else
-		return [:]
+		displayDebugLog("Unknown message type, message not parsed")
+	if (eventMap != [:]) {
+		displayDebugLog("Creating event $eventMap")
+		return createEvent(eventMap)
+	}
 }
 
 // Reverses order of bytes in hex string
@@ -262,6 +270,11 @@ private parseBattery(description) {
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
 	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
+	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
+	if (lastCheckinEnable) {
+		sendEvent(name: "lastCheckinEpoch", value: now())
+		sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
+	}
 	displayInfoLog(descText)
 	return [
 		name: 'battery',
@@ -344,24 +357,59 @@ def sendpositionEvent(String ocPosition) {
 	sendEvent(name: "contact", value: ocPosition, descriptionText: descText)
 }
 
-def changeSensitivity() {
-	if (!state.sensitivity)
-		// set initial sensitivity level to low
-		state.sensitivity = 0
-	else
-		// cycle level each time button is pressed - low > medium > high > low, etc.
-		state.sensitivity = (state.sensitivity < 2) ? state.sensitivity + 1 : 0
+def SetSensitivityLevelToLow() {
+	if (enableSensCommands) {
+		state.requestedSensLevel = 0
+		runInMillis(300, sendSensLevelCommand)
+	} else
+		log.warn "Set Sensitivity Level Command 'buttons' are disabled. Toggle preference setting to enable."
+}
+
+def SetSensitivityLevelToMedium() {
+	if (enableSensCommands) {
+		state.requestedSensLevel = 1
+		runInMillis(300, sendSensLevelCommand)
+	} else
+		log.warn "Set Sensitivity Level Command 'buttons' are disabled. Toggle preference setting to enable."
+}
+
+def SetSensitivityLevelToHigh() {
+	if (enableSensCommands) {
+		state.requestedSensLevel = 2
+		runInMillis(300, sendSensLevelCommand)
+	} else
+		log.warn "Set Sensitivity Level Command 'buttons' are disabled. Toggle preference setting to enable."
+}
+
+def sendSensLevelCommand() {
 	// sensitivity level attribute payload to send - low = 0x15, medium = 0x0B, high = 0x01
 	def attrValue = ["15", "0B", "01"]
 	def levelText = ["Low", "Medium", "High"]
-	def descText = "Sensitivity level set to ${levelText[state.sensitivity]}"
-	//def cmds = zigbee.writeAttribute(0x0000, 0xFF0D, 0x20, attrValue[state.sensitivity], [mfgCode: "0x115F"])
+	// def cmds = zigbee.writeAttribute(0x0000, 0xFF0D, 0x20, attrValue[state.currentSensLevel], [mfgCode: "0x115F"])
 	def cmds = [
-		"he wattr 0x${device.deviceNetworkId} 0x01 0x0000 0xFF0D 0x20 {${attrValue[state.sensitivity]}} {115F}", "delay 200"
+		"he wattr 0x${device.deviceNetworkId} 0x01 0x0000 0xFF0D 0x20 {${attrValue[state.requestedSensLevel]}} {115F}", "delay 200"
 	]
-	sendEvent(name: "sensitivityLevel", value: levelText[state.sensitivity], descriptionText: descText)
-	displayInfoLog(descText)
+	displayDebugLog("Sending commands: $cmds")
+	displayInfoLog("Sending request to set sensitivity level to ${levelText[state.requestedSensLevel]}")
 	return cmds
+}
+
+def changeSensLevelEvent() {
+	def timeDif = now() - device.latestState('sensitivityLevel').date.getTime()
+	displayDebugLog("Time diff since last sensitivity change event = $timeDif")
+	if (timeDif > 700) {
+		state.currentSensLevel = state.requestedSensLevel
+		def levelText = ["Low", "Medium", "High"]
+		def descText = "Sensitivity level set to ${levelText[state.currentSensLevel]}"
+		state.sensChangeRequested = false
+		displayInfoLog(descText)
+		return [
+			name: "sensitivityLevel",
+			value: levelText[state.currentSensLevel],
+			descriptionText: descText
+		]
+	} else
+		return [:]
 }
 
 // installed() runs just after a sensor is paired
@@ -369,7 +417,6 @@ def installed() {
 	displayInfoLog("Installing")
 	state.prefsSetCount = 0
 	mapSensorEvent(0)
-	refresh()
 	init()
 }
 
@@ -377,7 +424,6 @@ def installed() {
 def configure() {
 	displayInfoLog("Configuring")
 	mapSensorEvent(0)
-	refresh()
 	init()
 	state.prefsSetCount = 1
 }
@@ -386,7 +432,6 @@ def configure() {
 def updated() {
 	displayInfoLog("Updating preference settings")
 	init()
-	refresh()
 	if (lastCheckinEnable)
 		displayInfoLog("Last checkin events enabled")
 	if (otherDateTimeEnable)
@@ -398,19 +443,11 @@ def updated() {
 def init() {
 	if (!device.currentValue('batteryLastReplaced'))
 		resetBatteryReplacedDate(true)
-	if (!state.sensitivity) {
-		state.sensitivity = 2
-		log.info "Please short-press reset button to set initial sensitivity level to Low"
+	if (state.currentSensLevel == null) {
+		sendEvent(name: "sensitivityLevel", value: "Unknown", descriptionText: "Sensitivity level is currently unknown")
+		displayInfoLog("Sensitivity level is currently unknown. Please either use reset button mechanism or one of the Level command buttons to set the level.")
 	}
 	sendEvent(name: "numberOfButtons", value: 1)
-}
-
-def refresh() {
-	displayInfoLog("Refreshing UI display")
-	if (device.currentValue('tiltAngle') == null)
-		sendEvent(name: 'tiltAngle', value: "--")
-	if (device.currentValue('activityLevel') == null)
-		sendEvent(name: 'activityLevel', value: "--")
 }
 
 //Reset the batteryLastReplaced date to current date
