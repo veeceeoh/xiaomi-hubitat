@@ -1,4 +1,4 @@
-/**
+﻿/**
  *  Xiaomi MiJia Honeywell Smoke Detector - model JTYJ-GD-01LM/BW
  *  Device Driver for Hubitat Elevation hub
  *  Version 0.5.1
@@ -40,10 +40,13 @@ metadata {
 		capability "Configuration"
 		capability "Sensor"
 		capability "Smoke Detector"
+		capability "TestCapability"
+		
 		// attributes: smoke ("detected","clear","tested")
 
 		command "resetBatteryReplacedDate"
 		command "resetToClear"
+		command "test"
 
 		attribute "batteryLastReplaced", "String"
 		attribute "lastCheckin", "String"
@@ -63,11 +66,17 @@ metadata {
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
 		//Firmware 2.0.5 Compatibility Fix Config
 		input name: "oldFirmware", type: "bool", title: "DISABLE 2.0.5 firmware compatibility fix (for users of 2.0.4 or earlier)", description: ""
+		input name: "sensitivity", type: "enum", title: "Smoke sensitivity", description: "", options: [[0x04010000:"Smoke free area"],[0x04020000:"Slight amount of smoke"],[0x04030000:"Medium amount of smoke"]], defaultValue: 0x04010000, required: true
 	}
 }
 
 // Parse incoming device messages to generate events
 def parse(String description) {
+	displayDebugLog("Parsing message: ${description}")
+
+    if (description.startsWith("catchall"))
+    	return
+
 	def status = (description?.startsWith('zone status')) ? description[17] : ""
 	def attrId = status ? "" : description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
 	def encoding = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "encoding"}?.split(":")[1].trim(), 16)
@@ -80,7 +89,6 @@ def parse(String description) {
 		valueHex = reverseHexString(valueHex)
 	}
 
-	displayDebugLog("Parsing message: ${description}")
 	displayDebugLog("Message payload: ${valueHex}")
 
 	// lastCheckin can be used with webCoRE
@@ -110,6 +118,10 @@ def parse(String description) {
 		return createEvent(map)
 	} else
 		return [:]
+}
+
+def test() { // A beep indicates normal operation
+	return zigbee.writeAttribute(0x0500, 0xFFF1, DataType.UINT32, 0x03010000, [mfgCode: "0x115F"])
 }
 
 // Reverses order of bytes in hex string
@@ -200,12 +212,15 @@ def configure() {
 // updated() will run every time user saves preferences
 def updated() {
 	displayInfoLog("Updating preference settings")
-	init()
 	displayInfoLog("Info message logging enabled")
 	displayDebugLog("Debug message logging enabled")
+	init()
 }
 
 def init() {
 	if (!device.currentState('batteryLastReplaced')?.value)
 		resetBatteryReplacedDate(true)
+	
+	displayInfoLog("Setting sensitivity to ${sensitivity}")
+	zigbee.writeAttribute(0x0500, 0xFFF1, DataType.UINT32, Integer.parseInt(sensitivity), [mfgCode: "0x115F"])
 }
