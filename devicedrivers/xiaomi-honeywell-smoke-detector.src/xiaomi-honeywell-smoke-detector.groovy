@@ -1,7 +1,7 @@
 /**
  *  Xiaomi MiJia Honeywell Smoke Detector model JTYJ-GD-01LM/BW
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.6
+ *  Version 0.6.1
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -13,7 +13,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *  This code was adapted from a SmartThings device handler by foz333, based on work by KennethEvers
- *  Contributions to code by alecm, alixjg, bspranger, gn0st1c, Inpier, foz333, jmagnuson, KennethEvers, mike.maxwell, rinkek, ronvandegraaf, snalee, tmleaf, veeceeoh
+ *  Contributions to code by alecm, alixjg, bspranger, gn0st1c, Inpier, foz333, guyeeba, jmagnuson, KennethEvers, mike.maxwell, rinkek, ronvandegraaf, snalee, tmleaf, veeceeoh
  *
  *  Useful Links:
  *  Review of device... https://blog.tlpa.nl/2017/11/12/xiaomi-also-mijia-and-honeywell-smart-fire-detector/
@@ -25,12 +25,13 @@
  *  Battery: The device is powered by a lithium CR123a cell (expected life of 5 years)
  *
  *  Known issues:
- *  + Xiaomi devices send reports based on changes, and a status report every 50-60 minutes. These settings cannot be adjusted.
+ *  + This device sends reports based on changes / events, and a status report every 5-6 minutes. These settings cannot be adjusted.
  *  + The battery level / voltage is not reported at pairing. Wait for the first status report, 50-60 minutes after pairing.
  *  + Pairing Xiaomi devices can be difficult as they were not designed to use with a Hubitat hub.
- *    To put in pairing mode, press main button 3 times
+ *    To put device in pairing mode, press main button 3 times quickly
  *  + The connection can be dropped without warning. To reconnect, put Hubitat in "Discover Devices" mode, and follow the pairing procedure.
- *
+ *  + Dropped connections are often due to Xiaomi / Aqara device's incompatibility with most mains-powered Zigbee repeater devices
+ *    For more information see this Hubitat Community Forums thread:  https://community.hubitat.com/t/xiaomi-devices-are-they-pairing-staying-connected-for-you
  */
 
 metadata {
@@ -42,6 +43,7 @@ metadata {
 		capability "TestCapability"
 		// attributes: smoke ("detected","clear","tested")
 
+		command "checkSensitivityLevel"
 		command "resetBatteryReplacedDate"
 		command "resetToClear"
 		command "test"
@@ -180,6 +182,11 @@ def test() {
 	return zigbee.writeAttribute(0x0500, 0xFFF1, DataType.UINT32, 0x03010000, [mfgCode: "0x115F"])
 }
 
+def checkSensitivityLevel() {
+	// Sends a request to sensor to return the currently set sensitivity level.
+	return zigbee.readAttribute(0x0500, 0xFFF1, [mfgCode: "0x115F"])
+}
+
 private def displayDebugLog(message) {
 	if (debugLogging)
 		log.debug "${device.displayName}: ${message}"
@@ -224,6 +231,6 @@ def init() {
 		resetBatteryReplacedDate(true)
 	if (sensLevel) {
 		displayInfoLog("Setting smoke sensitivity level to ${sensLevel}")
-		zigbee.writeAttribute(0x0500, 0xFFF1, DataType.UINT32, Integer.parseInt(sensitivity), [mfgCode: "0x115F"])
+		zigbee.writeAttribute(0x0500, 0xFFF1, DataType.UINT32, Integer.parseInt(sensLevel), [mfgCode: "0x115F"])
 	}
 }
