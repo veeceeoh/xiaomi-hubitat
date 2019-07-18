@@ -48,7 +48,7 @@ metadata {
 		// This driver uses the Smoke Detector capabilty because "Gas Detector" is not available
 		// attributes: smoke ("detected","clear","tested")
 
-		command "checkSensitivityLevel"
+		//command "checkSensitivityLevel"
 		command "resetBatteryReplacedDate"
 		command "resetToClear"
 		command "test"
