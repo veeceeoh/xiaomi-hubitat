@@ -1,7 +1,9 @@
 /**
+ *  IMPORT URL: https://raw.githubusercontent.com/veeceeoh/xiaomi-hubitat/master/devicedrivers/xiaomi-cube-controller-hubitat.src/xiaomi-aqara-wireless-switch.groovy
+ *
  *  Xiaomi Mi Cube Controller - model MFKZQ01LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.3.2b
+ *  Version: 0.3.3b
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -31,7 +33,7 @@
  */
 
 metadata {
-	definition (name: "Xiaomi Mi Cube Controller", namespace: "veeceeoh", author: "veeceeoh") {
+	definition (name: "Xiaomi Mi Cube Controller", namespace: "veeceeoh", author: "veeceeoh", importUrl: "https://raw.githubusercontent.com/veeceeoh/xiaomi-hubitat/master/devicedrivers/xiaomi-cube-controller-hubitat.src/xiaomi-aqara-wireless-switch.groovy") {
 		capability "Battery"
 		capability "Configuration"
 		capability "PushableButton"
@@ -259,12 +261,12 @@ def flipEvents(Integer faceId, String flipType) {
 		displayInfoLog(descText)
 	}
 	switch (faceId) {
-		case 0: sendEvent([name: "threeAxis", value: "0,-1000,0"]); break
-		case 1: sendEvent([name: "threeAxis", value: "-1000,0,0"]); break
-		case 2: sendEvent([name: "threeAxis", value: "0,0,1000"]); break
-		case 3: sendEvent([name: "threeAxis", value: "1000,0,0"]); break
-		case 4: sendEvent([name: "threeAxis", value: "0,1000,0"]); break
-		case 5: sendEvent([name: "threeAxis", value: "0,0,-1000"]); break
+		case 0: sendEvent([name: "threeAxis", value: "[x:0,y:-1000,z:0]"]); break
+		case 1: sendEvent([name: "threeAxis", value: "[x:-1000,y:0,z:0]"]); break
+		case 2: sendEvent([name: "threeAxis", value: "[x:0,y:0,z:1000]"]); break
+		case 3: sendEvent([name: "threeAxis", value: "[x:1000,y:0,z:0]"]); break
+		case 4: sendEvent([name: "threeAxis", value: "[x:0,y:1000,z:0]"]); break
+		case 5: sendEvent([name: "threeAxis", value: "[x:0,y:0,z:-1000]"]); break
 	}
 }
 
