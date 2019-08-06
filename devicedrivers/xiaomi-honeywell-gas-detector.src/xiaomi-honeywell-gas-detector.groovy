@@ -4,7 +4,7 @@
  *
  *  Xiaomi MiJia Honeywell Gas Detector - model JTQJ-BF-01LM/BW
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.4b BETA
+ *  Version 0.5b BETA
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -41,6 +41,8 @@
  *
  */
 
+import hubitat.zigbee.clusters.iaszone.ZoneStatus
+
 metadata {
 	definition (name: "Xiaomi Gas Detector", namespace: "veeceeoh", author: "veeceeoh", importUrl: "https://raw.githubusercontent.com/veeceeoh/xiaomi-hubitat/master/devicedrivers/xiaomi-honeywell-gas-detector.src/xiaomi-honeywell-gas-detector.groovy") {
 		capability "Configuration"
@@ -51,9 +53,11 @@ metadata {
 		// attributes: smoke ("detected","clear","tested")
 
 		command "checkSensitivityLevel"
-		command "resetHubToClear"
-		command "test"
-		//command "parse", [[name:"description",type:"STRING", description:"Parse string to test", constraints:["STRING"]]]
+		command "sendClearEvent"
+		command "sendDetectedEvent"
+		command "setSensitivityLevel", [[name: "Choose gas sensitivity level", type: "ENUM", description: "Choose a level", constraints: ["high","medium","low"]]]
+		command "testConnection"
+		//command "parse", [[name: "Zigbee Message", type: "STRING", description: "Parse string to test", constraints: ["STRING"]]]
 
 		attribute "lastCheckinTime", "String"
 		attribute "lastCheckinEpoch", "String"
@@ -63,13 +67,12 @@ metadata {
 		attribute "lastDetectedEpoch", "String"
 		attribute "lastTestedTime", "String"
 		attribute "lastTestedEpoch", "String"
+		attribute "sensitivityLevel", "String"
 
 		fingerprint endpointId: "01", profileID: "0104", deviceID: "0101", inClusters: "0000,0004,0003,0001,0002,000A,0500", outClusters: "0019,000A", manufacturer: "LUMI", model: "lumi.sensor_natgas"
 	}
 
 	preferences {
-		// Gas Sensitivity Level Config
-		input name: "sensLevel", type: "enum", title: "Gas sensitivity level", description: "", options: [[1:"High"],[2:"Medium"],[3:"Low"]], defaultValue: 1, required: true
 		//Date/Time Stamp Events Config
 		input name: "lastCheckinEnable", type: "bool", title: "Enable custom date/time stamp events for lastCheckin", description: ""
 		input name: "otherCheckinEnable", type: "bool", title: "Enable custom date/time stamp events for lastClear, lastDetected, and lastTested", description: ""
@@ -84,11 +87,11 @@ metadata {
 // Parse incoming device messages to generate events
 def parse(String description) {
 	displayDebugLog("Parsing message: $description")
-	def result
+	def result = []
 	if (description?.startsWith('enroll request')) {
-		List cmds = zigbee.enrollResponse()
+		List cmds = zigbee.enrollResponse(1200)
 		displayDebugLog("Zigbee IAS Enroll response: $cmds")
-		result = cmds?.collect {new hubitat.device.HubAction(it)}
+		result = cmds?.collect {new hubitat.device.HubAction(it, hubitat.device.Protocol.ZIGBEE)}
 	} else if (description?.startsWith('zone status')) {
 		// Parse gas - clear / detected / tested status report
 		result = parseZoneStatusMessage(Integer.parseInt(description[17]))
@@ -96,8 +99,15 @@ def parse(String description) {
 		Map descMap = zigbee.parseDescriptionAsMap(description)
 		// Ignore "heartbeat" catchall messages that occur every minute
 		if (descMap.clusterId != "000A") {
-			displayDebugLog("Non-heartbeat catchall message received")
 			displayDebugLog("Zigbee parse map of catchall = $descMap")
+			if (descMap.clusterId == "0500") {
+				if (descMap.data.get(0) == "00")
+					displayDebugLog("Check/Change sensitivity command was successfully received")
+				else if (description.endsWith('F0FF'))
+					displayDebugLog("BETA: Received unknown Attribute ID 0xFFF0 value = ${Integer.parseInt(descMap.data.get(0),16)}")
+				else
+					displayDebugLog("Unknown catchall message")
+			}
 		}
 	} else if (description?.startsWith('re')) {
 		description = description - "read attr - "
@@ -106,7 +116,6 @@ def parse(String description) {
 			def nameAndValue = param.split(":")
 			map += [(nameAndValue[0].trim()):nameAndValue[1].trim()]
 		}
-		displayDebugLog("Map of message: $descMap")
 		def intEncoding = Integer.parseInt(descMap.encoding, 16)
 		if (!oldFirmware && descMap.value != null && intEncoding > 0x18 && intEncoding < 0x3e) {
 			displayDebugLog("Data type of message payload is little-endian; reversing byte order")
@@ -114,10 +123,9 @@ def parse(String description) {
 			descMap.value = reverseHexString(descMap.value)
 			displayDebugLog("Reversed payload value: ${descMap.value}")
 		}
-		if (descMap.attrId == "FFF0" || descMap.attrId == "FFF1") {
-			displayDebugLog("BETA: Possible sensitivity level command acknowledgement received")
+		if (descMap.attrId == "FFF0" & descMap.value?.startsWith('020')) {
+			parseSensitivityLevel(descMap.value[3] as Integer)
 		} else if (descMap.attrId == "FF01") {
-			displayDebugLog("Check-in message received")
 			parseCheckinMessage(descMap.value)
 			if (lastCheckinEnable) {
 				sendEvent(name: "lastCheckinEpoch", value: now())
@@ -127,20 +135,19 @@ def parse(String description) {
 			displayDebugLog("Unknown read attribute message")
 		}
 	}
-	if (result) {
-		if (result.descriptionText)
-			displayInfoLog(result.descriptionText)
+	if (result.descriptionText) {
+		displayInfoLog(result.descriptionText)
 		displayDebugLog("Creating event $result")
-		return createEvent(result)
+		sendEvent(result)
 	} else
-		return [:]
+		return result
 }
 
 // Parse IAS Zone Status message (0 = clear, 1 = detected, or 3 = tested)
 private Map parseZoneStatusMessage(status) {
 	def value = ["clear", "detected", "tested"]
 	def eventType = ["Clear", "Detected", "Tested"]
-	def descText = ["All clear", "Gas detected", "Completed self-test"]
+	def descText = ["All clear", "Gas detected", "Self-test button pushed"]
 	if (otherCheckinEnable) {
 		sendEvent(name: "last${eventType}Epoch", value: now())
 		sendEvent(name: "last${eventType}Time", value: new Date().toLocaleString())
@@ -151,6 +158,15 @@ private Map parseZoneStatusMessage(status) {
 		isStateChange: true,
 		descriptionText: descText[status]
 	]
+}
+
+// Reverses order of bytes in hex string
+def reverseHexString(hexString) {
+	def reversed = ""
+	for (int i = hexString.length(); i > 0; i -= 2) {
+		reversed += hexString.substring(i - 2, i )
+	}
+	return reversed
 }
 
 def parseCheckinMessage(hexString) {
@@ -167,11 +183,32 @@ def parseCheckinMessage(hexString) {
 	displayInfoLog("(BETA) Check-in report: RSSI dB = $rssi, Internal Temp = ${tempLocal}°${location.temperatureScale}, Gas Density = $gasDensity")
 }
 
-def resetHubToClear() {
-	sendEvent(name:"smoke", value:"clear")
+def parseSensitivityLevel(value) {
+	if (value >= 1 & value <= 3) {
+		def levelText = [1:"high", 2:"medium", 3:"low"]
+		displayInfoLog("Sensitivity level is set to ${levelText[value]}")
+		sendEvent(name: "sensitivityLevel", value: levelText[value])
+	} else
+		displayDebugLog("Invalid sensitivity level message value received")
 }
 
-def test() {
+def sendClearEvent() {
+	manualEvent(0)
+}
+
+def sendDetectedEvent() {
+	manualEvent(1)
+}
+
+def manualEvent(value) {
+	def result = parseZoneStatusMessage(value)
+	result.descriptionText += " (manually created event)"
+	displayInfoLog(result.descriptionText)
+	displayDebugLog("Manually creating event $result")
+	sendEvent(result)
+}
+
+def testConnection() {
 	// Sends a command to sensor to complete self-test. An alarm beep indicates normal operation.
 	def cmds = [
 		"he wattr 0x${device.deviceNetworkId} 0x01 0x0500 0xFFF1 0x23 {03010000} {115F}", "delay 200"
@@ -185,22 +222,28 @@ def test() {
 
 def checkSensitivityLevel() {
 	// Sends a request to sensor to return the currently set sensitivity level.
-	displayInfoLog("Checking currently set sensitivity level")
+	displayDebugLog("Sending command to check sensitivity level")
 	return zigbee.readAttribute(0x0500, 0xFFF0, [mfgCode: "0x115F"])
 }
 
-def sendSensLevelCommand() {
-	// sensitivity level attribute payload to send - low = 0x02030000, medium = 0x02020000, high = 0x02010000
+def setSensitivityLevel(level) {
 	def levelText = [1:"high", 2:"medium", 3:"low"]
-	def attrValue = [1:0x02010000, 2:0x02020000, 3:0x02030000]
+	def attrValue = [1:"02010000", 2:"02020000", 3:"02030000"]
+	def levelInt
+	for (int i = 1; i < 4; i++) {
+		levelInt = i
+		if (levelText[i] == level)
+			break
+	}
+	// sensitivity level attribute payload to send - low = 0x02030000, medium = 0x02020000, high = 0x02010000
 	// def cmds = [zigbee.writeAttribute(0x0500, 0xFFF1, 0x23, attrValue[Integer.parseInt(sensLevel)], [mfgCode: "0x115F"]), "delay 200"]
 	// Data type 0x23 = DataType.UINT32
 	def cmds = [
-		"he wattr 0x${device.deviceNetworkId} 0x01 0x0500 0xFFF1 0x23 {${attrValue[Integer.parseInt(sensLevel)]}} {115F}", "delay 200"
+		"he wattr 0x${device.deviceNetworkId} 0x01 0x0500 0xFFF1 0x23 {${attrValue[levelInt]}} {115F}", "delay 200"
 	]
-	displayInfoLog("Setting sensitivity level to ${levelText[Integer.parseInt(sensLevel)]}")
+	displayInfoLog("Requesting sensitivity level change to $level")
 	displayDebugLog("Sending commands: $cmds")
-	state.sensitivityLevel = levelText[Integer.parseInt(sensLevel)]
+	runInMillis(500, checkSensitivityLevel)
 	return cmds
 }
 
@@ -217,14 +260,13 @@ private def displayInfoLog(message) {
 // installed() runs just after a sensor is paired
 def installed() {
 	state.prefsSetCount = 0
+	runIn(1800, turnOffInfoLogging)
 }
 
 // configure() runs after installed() when a sensor is paired
 def configure() {
 	displayInfoLog("Configuring")
-	init()
-	state.prefsSetCount = 1
-	if (!state.sensitivityLevel)
+	if (!device.currentValue('sensitivityLevel'))
 		return checkSensitivityLevel()
 }
 
@@ -233,15 +275,9 @@ def updated() {
 	displayInfoLog("Updating preference settings")
 	displayInfoLog("Info message logging enabled")
 	displayDebugLog("Debug message logging enabled")
-	init()
 }
 
-def init() {
-	if (sensLevel) {
-		def sensLevelText = [1:"high", 2:"medium", 3:"low"]
-		if (!state.sensitivityLevel || state.sensitivityLevel != sensLevelText[Integer.parseInt(sensLevel)]) {
-			displayDebugLog("Gas sensitivity level preference changed to ${sensLevelText[Integer.parseInt(sensLevel)]}")
-			runInMillis(300, sendSensLevelCommand)
-		}
-	}
+def turnOffInfoLogging() {
+	displayInfoLog("Info logging is being automatically disabled 30 minutes after pairing")
+	state.prefsSetCount = 1
 }
