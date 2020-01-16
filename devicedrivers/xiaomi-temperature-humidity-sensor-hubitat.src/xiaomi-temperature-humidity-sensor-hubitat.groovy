@@ -2,7 +2,7 @@
  * Xiaomi "Original" Temperature Humidity Sensor - model RTCGQ01LM
  * & Aqara Temperature Humidity Sensor - model WSDCGQ11LM
  * Device Driver for Hubitat Elevation hub
- * Version 0.8.2
+ * Version 0.9
  *
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -31,83 +31,94 @@
  */
 
 metadata {
-	definition (name: "Xiaomi Temperature Humidity Sensor", namespace: "veeceeoh", author: "veeceeoh") {
+	definition (name: "Xiaomi Temperature Humidity Sensor", namespace: "veeceeoh", author: "veeceeoh", importUrl: "https://raw.githubusercontent.com/veeceeoh/xiaomi-hubitat/master/devicedrivers/xiaomi-temperature-humidity-sensor-hubitat.src/xiaomi-temperature-humidity-sensor-hubitat.groovy") {
 		capability "Battery"
 		capability "PressureMeasurement"
 		capability "RelativeHumidityMeasurement"
 		capability "Sensor"
 		capability "TemperatureMeasurement"
 
+		command "resetBatteryReplacedDate"
 
 		attribute "lastCheckinEpoch", "String"
 		attribute "lastCheckinTime", "Date"
 		attribute "batteryLastReplaced", "String"
 
-		//fingerprint for Xioami "original" Temperature Humidity Sensor
-		fingerprint profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", manufacturer: "LUMI", model: "lumi.sensor_ht"
-		//fingerprint for Xioami Aqara Temperature Humidity Sensor
-		fingerprint profileId: "0104", inClusters: "0000, 0003, FFFF, 0402, 0403, 0405", outClusters: "0000, 0004, FFFF", manufacturer: "LUMI", model: "lumi.weather"
-
-		command "resetBatteryReplacedDate"
+		//fingerprint for Xioami "original" Temperature Humidity Sensor - model RTCGQ01LM
+		fingerprint profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", model: "lumi.sens"
+		fingerprint profileId: "0104", inClusters: "0000,0003,0019,FFFF,0012", outClusters: "0000,0004,0003,0005,0019,FFFF,0012", model: "lumi.sensor_ht"
+		//fingerprint for Xioami Aqara Temperature Humidity Sensor - model WSDCGQ11LM
+		fingerprint profileId: "0104", inClusters: "0000,0003,FFFF,0402,0403,0405", outClusters: "0000,0004,FFFF", model: "lumi.weather"
 	}
 
 	preferences {
 		//Temp and Humidity Offsets
 		input "tempOffset", "decimal", title:"Temperature Offset", description:"", range:"*..*"
 		input "humidityOffset", "decimal", title:"Humidity Offset", description:"", range: "*..*"
-		input "pressOffset", "decimal", title:"Pressure Offset (Aqara model only)", description:"", range: "*..*"
-		input name:"pressureUnits", type:"enum", title:"Pressure Units (Aqara model only)", description:"", options:["mbar", "kPa", "inHg", "mmHg"]
+		if (getDataValue("modelType") == "Aqara WSDCGQ11LM" || getDataValue("modelType") == "unknown") {
+			input name: "pressOffset", type: "decimal", title: "Pressure Offset", description: "", range: "*..*"
+			input name: "pressureUnits", type: "enum", title: "Pressure Units (default: mbar)", description: "", options: ["mbar", "kPa", "inHg", "mmHg"], default: "mbar"
+		}
 		//Battery Voltage Range
-		input name: "voltsmin", title: "Min Volts (0% battery = ___ volts, range 2.0 to 2.9). Default = 2.9 Volts", description: "", type: "decimal", range: "2..2.9"
-		input name: "voltsmax", title: "Max Volts (100% battery = ___ volts, range 2.95 to 3.4). Default = 3.05 Volts", description: "", type: "decimal", range: "2.95..3.4"
+		input name: "voltsmin", type: "decimal", title: "Min Volts (0% battery = ___ volts). Default = 2.8 Volts", description: ""
+		input name: "voltsmax", type: "decimal", title: "Max Volts (100% battery = ___ volts). Default = 3.05 Volts", description: ""
 		//Date/Time Stamp Events Config
 		input name: "lastCheckinEnable", type: "bool", title: "Enable custom date/time stamp events for lastCheckin", description: ""
 		//Logging Message Config
 		input name: "infoLogging", type: "bool", title: "Enable info message logging", description: ""
 		input name: "debugLogging", type: "bool", title: "Enable debug message logging", description: ""
-		//Firmware 2.0.5 Compatibility Fix Config
-		input name: "oldFirmware", type: "bool", title: "DISABLE 2.0.5 firmware compatibility fix (for users of 2.0.4 or earlier)", description: ""
 	}
 }
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-	def cluster = description.split(",").find {it.split(":")[0].trim() == "cluster"}?.split(":")[1].trim()
-	def attrId = description.split(",").find {it.split(":")[0].trim() == "attrId"}?.split(":")[1].trim()
-	def encoding = Integer.parseInt(description.split(",").find {it.split(":")[0].trim() == "encoding"}?.split(":")[1].trim(), 16)
-	def valueHex = description.split(",").find {it.split(":")[0].trim() == "value"}?.split(":")[1].trim()
-	Map map = [:]
-
-	if (!oldFirmware & valueHex != null & encoding > 0x18 & encoding < 0x3e) {
-		displayDebugLog("Data type of payload is little-endian; reversing byte order")
-		// Reverse order of bytes in description's payload for LE data types - required for Hubitat firmware 2.0.5 or newer
-		valueHex = reverseHexString(valueHex)
-	}
-
-	displayDebugLog("Parsing message: ${description}")
-	displayDebugLog("Message payload: ${valueHex}")
-
+	displayDebugLog("Parsing message: $description")
+	def result
+	if (description?.startsWith('cat')) {
+		Map descMap = zigbee.parseDescriptionAsMap(description)
+		displayDebugLog("Zigbee parse map of catchall = $descMap")
+		displayDebugLog("No action taken on catchall message")
+	} else if (description?.startsWith('re')) {
+		description = description - "read attr - "
+		Map descMap = (description).split(",").inject([:]) {
+			map, param ->
+			def nameAndValue = param.split(":")
+			map += [(nameAndValue[0].trim()):nameAndValue[1].trim()]
+		}
+		// Reverse payload byte order for little-endian data types - required for Hubitat firmware 2.0.5 or newer
+		def intEncoding = Integer.parseInt(descMap.encoding, 16)
+		if (descMap.value != null && intEncoding > 0x18 && intEncoding < 0x3e) {
+			descMap.value = reverseHexString(descMap.value)
+			displayDebugLog("Little-endian payload data type; Hex value reversed to: ${descMap.value}")
+		}
 	// Send message data to appropriate parsing function based on the type of report
-	if (cluster == "0402")
-		map = parseTemperature(valueHex)
-	else if (cluster == "0405")
-		map = parseHumidity(valueHex)
-	else if (cluster == "0403")
-		map = parsePressure(valueHex)
-	else if (cluster == "0000" & attrId == "0005")
-		displayDebugLog("Reset button was short-pressed")
-	else if	(cluster == "0000" & (attrId == "FF01" || attrId == "FF02"))
-		// Parse battery level from hourly announcement message
-		map = parseBattery(valueHex)
-	else
-		displayDebugLog("Unable to parse message")
-
-	if (map != [:]) {
-		displayInfoLog(map.descriptionText)
-		displayDebugLog("Creating event $map")
-		return createEvent(map)
+		switch (descMap.cluster) {
+			case "0000": // Announcement or Check-in report
+				if (descMap.attrId == "0005")
+					displayDebugLog("Reset button was short-pressed")
+				else if (descMap.attrId == "FF01" || descMap.attrId == "FF02") // Hourly check-in report
+					result = parseCheckinMessage(descMap.value)
+				break
+			case "0402": // Temperature report
+				result = parseTemperature(descMap.value)
+				break
+			case "0403": // Pressure report (Aqara model only)
+				result = parsePressure(descMap.value)
+				break
+			case "0405": // Humidity report
+				result = parseHumidity(descMap.value)
+				break
+			default:
+				displayDebugLog("Unknown read attribute message")
+		}
+	}
+	if (result) {
+		if (result.descriptionText)
+			displayInfoLog(result.descriptionText)
+		displayDebugLog("Creating event $result")
+		return createEvent(result)
 	} else
-		return map
+		return [:]
 }
 
 // Reverses order of bytes in hex string
@@ -120,43 +131,64 @@ def reverseHexString(hexString) {
 }
 
 // Calculate temperature with 0.01 precision in C or F unit as set by hub location settings
-private parseTemperature(description) {
-	float temp = Integer.parseInt(description,16)/100
-	temp = (temp > 100) ? (temp - 655.35) : temp
-	displayDebugLog("Raw reported temperature = ${temp}°C")
-	temp = (location.temperatureScale == "F") ? ((temp * 1.8) + 32) : temp
-	temp = tempOffset ? (temp + tempOffset) : temp
-	temp = temp.round(2)
-	return [
-		name: 'temperature',
-		value: temp,
-		unit: "°${location.temperatureScale}",
-		descriptionText: "Temperature is ${temp}°${location.temperatureScale}",
-		translatable:true
-	]
+private parseTemperature(hexString) {
+	float temp = hexStrToSignedInt(hexString)/100
+	def tempScale = location.temperatureScale
+	def debugText = "Reported temperature: raw = $temp°C"
+	if (temp < -50) {
+		log.warn "${device.displayName}: Out-of-bounds temperature value received. Battery voltage may be too low."
+		return ""
+	} else {
+		if (tempScale == "F") {
+			temp = ((temp * 1.8) + 32)
+			debugText += ", converted = $temp°F"
+		}
+		if (tempOffset) {
+			temp = (temp + tempOffset)
+			debugText += ", offset = $tempOffset"
+		}
+		displayDebugLog(debugText)
+		temp = temp.round(2)
+		return [
+			name: 'temperature',
+			value: temp,
+			unit: "°$tempScale",
+			descriptionText: "Temperature is $temp°$tempScale",
+			translatable:true
+		]
+	}
 }
 
 // Calculate humidity with 0.1 precision
-private parseHumidity(description) {
-	float humidity = Integer.parseInt(description,16)/100
-	displayDebugLog("Raw reported humidity = ${humidity}%")
-	humidity = humidityOffset ? (humidity + humidityOffset) : humidity
-	humidity = humidity.round(1)
-	return [
-		name: 'humidity',
-		value: humidity,
-		unit: "%",
-		descriptionText: "Humidity is ${humidity}%",
-	]
+private parseHumidity(hexString) {
+	float humidity = Integer.parseInt(hexString,16)/100
+	def debugText = "Reported humidity: raw = $humidity"
+	if (humidity > 100) {
+		log.warn "${device.displayName}: Out-of-bounds humidity value received. Battery voltage may be too low."
+		return ""
+	} else {
+		if (humidityOffset) {
+			debugText += ", offset = $humidityOffset"
+			humidity = (humidity + humidityOffset)
+		}
+		displayDebugLog(debugText)
+		humidity = humidity.round(1)
+		return [
+			name: 'humidity',
+			value: humidity,
+			unit: "%",
+			descriptionText: "Humidity is ${humidity}%",
+		]
+	}
 }
 
 // Parse pressure report
-private parsePressure(description) {
-	float pressureval = Integer.parseInt(description[0..3], 16)
+private parsePressure(hexString) {
+	float pressureval = Integer.parseInt(hexString[0..3], 16)
+	def debugText = "Reported pressure: raw = $pressureval"
 	if (!(pressureUnits)) {
 		pressureUnits = "mbar"
 	}
-	displayDebugLog("Converting ${pressureval} to ${pressureUnits}")
 	switch (pressureUnits) {
 		case "mbar":
 			pressureval = (pressureval/10) as Float
@@ -175,33 +207,45 @@ private parsePressure(description) {
 			pressureval = pressureval.round(2);
 			break;
 	}
-	pressureval = pressOffset ? (pressureval + pressOffset) : pressureval
+	debugText += ", converted = $pressureval $pressureUnits"
+	if (pressOffset) {
+		debugText += ", offset = $pressOffset"
+		pressureval = (pressureval + pressOffset)
+	}
+	displayDebugLog(debugText)
 	pressureval = pressureval.round(2);
-
 	return [
-		name: 'pressure',
+		name: 'pressureMeasurement',
 		value: pressureval,
 		unit: pressureUnits,
 		descriptionText: "Pressure is ${pressureval} ${pressureUnits}"
 	]
 }
 
+def parseCheckinMessage(hexString) {
+	displayDebugLog("Checkin message raw hex string = ${hexString}")
+	return parseBattery(hexString)
+}
+
 // Convert raw 4 digit integer voltage value into percentage based on minVolts/maxVolts range
-private parseBattery(description) {
-	displayDebugLog("Battery parse string = ${description}")
-	def rawValue = Integer.parseInt((description[8..9] + description[6..7]),16)
+private parseBattery(hexString) {
+	def hexBattery = (hexString[8..9] + hexString[6..7])
+	displayDebugLog("Battery parse string = ${hexBattery}")
+	def rawValue = Integer.parseInt(hexBattery,16)
 	def rawVolts = rawValue / 1000
-	def minVolts = voltsmin ? voltsmin : 2.9
+	def minVolts = voltsmin ? voltsmin : 2.8
 	def maxVolts = voltsmax ? voltsmax : 3.05
 	def pct = (rawVolts - minVolts) / (maxVolts - minVolts)
 	def roundedPct = Math.min(100, Math.round(pct * 100))
-	def descText = "Battery level is ${roundedPct}% (${rawVolts} Volts)"
+	displayDebugLog("Battery report: $rawVolts Volts, calculating level based on min/max range of $minVolts to $maxVolts")
+	def descText = "Battery level is $roundedPct% ($rawVolts Volts)"
 	return [
 		name: 'battery',
 		value: roundedPct,
 		unit: "%",
 		descriptionText: descText
 	]
+
 	// lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
 	if (lastCheckinEnable) {
 		sendEvent(name: "lastCheckinEpoch", value: now())
@@ -235,6 +279,17 @@ def updated() {
 }
 
 def init() {
+	if (!(getDataValue("modelType")) || getDataValue("modelType") == "unknown") {
+		def sensorModel = "unknown"
+		if (device.data.model != "") {
+			if (device.data.model[5] == "s")  // for model: "lumi.sensor_ht" or "lumi.sens"
+				sensorModel = "Xiaomi RTCGQ01LM"
+			else if (device.data.model[5] == "w")  // for model: "lumi.weather"
+				sensorModel = "Aqara WSDCGQ11LM"
+		}
+		updateDataValue("modelType", sensorModel)
+		displayInfoLog("Detected sensor model is ${sensorModel}")
+	}
 	if (!device.currentValue('batteryLastReplaced'))
 		resetBatteryReplacedDate(true)
 }
