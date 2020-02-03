@@ -2,7 +2,7 @@
  * Xiaomi "Original" Temperature Humidity Sensor - model RTCGQ01LM
  * & Aqara Temperature Humidity Sensor - model WSDCGQ11LM
  * Device Driver for Hubitat Elevation hub
- * Version 1.0
+ * Version 1.0.1
  *
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -209,7 +209,7 @@ private parsePressure(float pressureval, checkin) {
 	displayDebugLog(debugText)
 	pressureval = pressureval.round(2)
 	generateEvent([
-		name: 'pressureMeasurement',
+		name: 'pressure',
 		value: pressureval,
 		unit: pressureUnits,
 		descriptionText: "Pressure is $pressureval $pressureUnits"
