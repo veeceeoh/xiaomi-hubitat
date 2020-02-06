@@ -1,7 +1,7 @@
 /**
  *  Xiaomi Aqara Motion Sensor - model RTCGQ11LM
  *  Device Driver for Hubitat Elevation hub
- *  Version 0.7.2
+ *  Version 0.8.0
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -173,17 +173,23 @@ private parseBattery(description) {
 
 // If currently in 'active' motion detected state, resetToMotionInactive() resets to 'inactive' state and displays 'no motion'
 def resetToMotionInactive() {
+	def seconds = motionreset ? motionreset : 61
+	def timediff = ((now() - device.currentState('lastMotion')?.value.toLong()) / 1000).intValue()
 	if (device.currentState('motion')?.value == "active") {
-		def seconds = motionreset ? motionreset : 61
-		def descText = "Reset to motion inactive after ${seconds} seconds"
-		sendEvent(
-			name:'motion',
-			value:'inactive',
-			isStateChange: true,
-			descriptionText: descText
-		)
-		sendEvent(name: "lastInactive", value: now())
-		displayInfoLog(descText)
+		if(timediff < seconds) {
+			runIn(seconds - timediff, resetToMotionInactive)
+		}
+		else {
+			def descText = "Reset to motion inactive after ${seconds} seconds"
+			sendEvent(
+				name:'motion',
+				value:'inactive',
+				isStateChange: true,
+				descriptionText: descText
+			)
+			sendEvent(name: "lastInactive", value: now())
+			displayInfoLog(descText)
+		}
 	}
 }
 
