@@ -15,7 +15,7 @@
  *
  *  Based on SmartThings device handler code by a4refillpad
  *  Reworked and additional code for use with Hubitat Elevation hub by veeceeoh
- *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, guyeeba, jmagnuson, mike.maxwell, rinkek, ronvandegraaf, snalee, tmleafs, twonk, veeceeoh, & xtianpaiva
+ *  With contributions by alecm, alixjg, bspranger, gn0st1c, foz333, guyeeba, jmagnuson, mike.maxwell, rinkek, ronvandegraaf, snalee, tmleafs, twonk, veeceeoh, xtianpaiva, & vpjuslin
  *
  *  Basic control utilizes OnOff cluster (0x0006) commands off (0x00), on (0x01), and toggle (0x02)
  *
@@ -37,8 +37,8 @@
 
 
 metadata {
-    definition (name: "Xiaomi Smart Socket alpha", namespace: "vpjuslin", author: "veeceeoh",
-		importUrl: "https://raw.githubusercontent.com/vpjuslin/xiaomi-hubitat/master/devicedrivers/xiaomi-smart-socket-hubitat.src/xiaomi-smart-socket-hubitat.groovy") {) {
+    definition (name: "Xiaomi Smart Socket", namespace: "veeceoh", author: "veeceeoh",
+		importUrl: "https://raw.githubusercontent.com/veeceoh/xiaomi-hubitat/master/devicedrivers/xiaomi-smart-socket-hubitat.src/xiaomi-smart-socket-hubitat.groovy") {
 	capability "Actuator"
         capability "PowerMeter"
 
