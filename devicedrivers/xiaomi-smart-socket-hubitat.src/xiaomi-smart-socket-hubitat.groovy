@@ -50,7 +50,7 @@ metadata {
         // profileId: 0x0104 Home Automation (HA) profile
         // inClusters: Basic 0x0000, Power configuration 0x0001, Device Temperature Configuration 0x0002, Identify 0x0003, Groups 0x0004, Scenes 0x0005, OnOff 0x0006, Time 0x000A, Binary output 0x0010
         // outClusters: Time 0x000A, OTA upgrade 0x0019
-        fingerprint profileId: "0104", inClusters: "0000,0001,0002,0003,0004,0005,0006,000A,0010", outClusters: "000A,0019", manufacturer: "LUMI", model: "lumi.plug"
+        fingerprint profileId: "0104", inClusters: "0000,0004,0003,0006,0010,0005,000A,0001,0002", outClusters: "0019,000A", manufacturer: "LUMI", model: "lumi.plug"
 	
         command "identify"
 	command "off"
