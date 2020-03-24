@@ -76,13 +76,13 @@ def handleSourceEndpoint01Message(Map descMap) {
         case 0x0000: // Basic
             switch (descMap.attrId) {
                 case "FF01":
-		    // TODO: what is this?
-		    break
+                    // TODO: what is this?
+                    break
                 default:
                     displayDebugLog("Unsupported attribute ${descMap.attrId} in ${descMap}")
-	    }
-	    break
-	case 0x0006: // OnOff
+            }
+            break
+        case 0x0006: // OnOff
             // TODO: semantics of whole additional attribute string
             actuatorState = (Integer.parseInt(descMap.value, 16) == 0 ? 'off' : 'on')
             // hub/button heuristics is observed behavior, not confirmed from any specs
@@ -155,18 +155,18 @@ def handleMessage(Map descMap) {
     Map eventMap = [:]
     
     switch(descMap.endpoint) {
-	case "01":
-	    eventMap = handleSourceEndpoint01Message(descMap)
-	    break
-	case "02":
-	    eventMap = handleSourceEndpoint02Message(descMap)
-	    break
-	case "03":
-	    eventMap = handleSourceEndpoint03Message(descMap)
-	    break
-	default:
-	    displayDebugLog("Unsupported source endpoint ${descMap.sourceEndpoint} for ${descMap}")
-	    break
+        case "01":
+            eventMap = handleSourceEndpoint01Message(descMap)
+            break
+        case "02":
+            eventMap = handleSourceEndpoint02Message(descMap)
+            break
+        case "03":
+            eventMap = handleSourceEndpoint03Message(descMap)
+            break
+        default:
+            displayDebugLog("Unsupported source endpoint ${descMap.sourceEndpoint} for ${descMap}")
+            break
     }
 
     return eventMap
@@ -188,17 +188,17 @@ def parse(String description) {
     Map eventMap = [:]
     
     if (description.startsWith("catchall")) {
-	hubitat.zigbee.SmartShield descSmartShield = zigbee.parse(description)
+        hubitat.zigbee.SmartShield descSmartShield = zigbee.parse(description)
 
-	displayDebugLog("Catchall message: ${descSmartShield}")
+        displayDebugLog("Catchall message: ${descSmartShield}")
 
-	eventMap = handleCatchallMessage(descSmartShield)
+        eventMap = handleCatchallMessage(descSmartShield)
     } else {
-	Map descMap = zigbee.parseDescriptionAsMap(description)
+        Map descMap = zigbee.parseDescriptionAsMap(description)
 
-	displayDebugLog("Message: ${descMap}")
+        displayDebugLog("Message: ${descMap}")
 
-	eventMap = handleMessage(descMap)
+        eventMap = handleMessage(descMap)
     }
 
     
