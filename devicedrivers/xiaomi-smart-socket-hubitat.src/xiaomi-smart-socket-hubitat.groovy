@@ -37,8 +37,8 @@
 
 
 metadata {
-    definition (name: "Xiaomi Smart Socket", namespace: "veeceoh", author: "veeceeoh",
-                importUrl: "https://raw.githubusercontent.com/veeceoh/xiaomi-hubitat/master/devicedrivers/xiaomi-smart-socket-hubitat.src/xiaomi-smart-socket-hubitat.groovy") {
+    definition (name: "Xiaomi Smart Socket", namespace: "veeceeoh", author: "veeceeoh",
+                importUrl: "https://raw.githubusercontent.com/veeceeoh/xiaomi-hubitat/master/devicedrivers/xiaomi-smart-socket-hubitat.src/xiaomi-smart-socket-hubitat.groovy") {
         capability "Actuator"
         capability "PowerMeter"
 
@@ -65,37 +65,55 @@ metadata {
     }
 }
 
-
-// Parse incoming device messages to generate events
-def parse(String description) {
-    displayDebugLog("Raw message data: ${description}")
-    if (description.startsWith("catchall")) return // TODO: what is catchall?
-    
-    def descMap = zigbee.parseDescriptionAsMap(description)
+// endpoint 01
+// profileId: 0x0104 Home Automation (HA) profile
+// inClusters : 0000,0004,0003,0006,0010,0005,000A,0001,0002
+// outClusters : 0019, 000A
+def handleSourceEndpoint01Message(Map descMap) {
     Map eventMap = [:]
-    
-    displayDebugLog("Message: ${descMap}")
-    
-    // lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
-    sendEvent(name: "lastCheckinEpoch", value: now())
-    sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
-    
+
     switch (descMap.clusterInt) {
-        case 0x0006: // OnOff
+        case 0x0000: // Basic
+            switch (descMap.attrId) {
+                case "FF01":
+		    // TODO: what is this?
+		    break
+                default:
+                    displayDebugLog("Unsupported attribute ${descMap.attrId} in ${descMap}")
+	    }
+	    break
+	case 0x0006: // OnOff
             // TODO: semantics of whole additional attribute string
-            def actuatorState = (Integer.parseInt(descMap.value, 16) == 0 ? 'off' : 'on')
+            actuatorState = (Integer.parseInt(descMap.value, 16) == 0 ? 'off' : 'on')
             // hub/button heuristics is observed behavior, not confirmed from any specs
-            def deviceButtonPressed = ((Integer.parseInt(descMap.additionalAttrs[0].value[0..1]).byteValue() & (1 << 2)) != 0 ? " remotely via hub" : " manually using button on device")
+            deviceButtonPressed = ((Integer.parseInt(descMap.additionalAttrs[0].value[0..1]).byteValue() & (1 << 2)) != 0 ? " remotely via hub" : " manually using button on device")
             eventMap = [ name: 'actuatorState',
                         value: actuatorState,
                         isStateChange: true,
-                        descriptionText: "Actuator state changed to ${actuatorState}${deviceButtonPressed}"
+                        descriptionText: "Actuator state is off ${actuatorState}${deviceButtonPressed}"
             ]
             break
+        default:
+            displayDebugLog("Unsupported cluster ${descMap.clusterInt} for ${descMap}")
+            break
+    }
+
+    return eventMap
+}
+
+
+// endpoint 02
+// profileId: 0x0104 Home Automation (HA) profile
+// inClusters : Analog Input (Basic) Server 0x000C
+// outClusters : Analog Input (Basic) Server 0x000C, Groups 0004
+def handleSourceEndpoint02Message(Map descMap) {
+    Map eventMap = [:]
+    
+    switch (descMap.clusterInt) {
         case 0x000c: // Analog Input (Basic) Server
             switch (descMap.attrId) {
                 case "0055": // PresentValue (single precision)
-                    def presentValue = Float.intBitsToFloat(Long.parseLong(descMap.value, 16).intValue())
+                    presentValue = Float.intBitsToFloat(Long.parseLong(descMap.value, 16).intValue())
                     eventMap = [ name: 'power',
                                 value: presentValue,
                                 isStateChange: true,
@@ -111,6 +129,84 @@ def parse(String description) {
             break
     }
     
+    return eventMap
+}
+
+
+// endpoint 03
+// profileId: 0x0104 Home Automation (HA) profile
+// inClusters : Analog Input (Basic) Server 0x000C
+// outClusters : Analog Input (Basic) Server 0x000C
+def handleSourceEndpoint03Message(Map descMap) {
+    Map eventMap = [:]
+
+    switch (descMap.clusterInt) {
+        default:
+            displayDebugLog("Unsupported cluster ${descMap.clusterInt} for ${descMap}")
+            break
+    }
+
+    return eventMap
+}
+
+
+def handleMessage(Map descMap) {
+
+    Map eventMap = [:]
+    
+    switch(descMap.endpoint) {
+	case "01":
+	    eventMap = handleSourceEndpoint01Message(descMap)
+	    break
+	case "02":
+	    eventMap = handleSourceEndpoint02Message(descMap)
+	    break
+	case "03":
+	    eventMap = handleSourceEndpoint03Message(descMap)
+	    break
+	default:
+	    displayDebugLog("Unsupported source endpoint ${descMap.sourceEndpoint} for ${descMap}")
+	    break
+    }
+
+    return eventMap
+}
+
+
+// We have no idea what to do with catchall messages
+def handleCatchallMessage(hubitat.zigbee.SmartShield descSmartShield) {
+    Map eventMap = [:]
+    
+    return eventMap
+}
+
+
+// Parse incoming device messages to generate events
+def parse(String description) {
+    displayDebugLog("Raw message data: ${description}")
+
+    Map eventMap = [:]
+    
+    if (description.startsWith("catchall")) {
+	hubitat.zigbee.SmartShield descSmartShield = zigbee.parse(description)
+
+	displayDebugLog("Catchall message: ${descSmartShield}")
+
+	eventMap = handleCatchallMessage(descSmartShield)
+    } else {
+	Map descMap = zigbee.parseDescriptionAsMap(description)
+
+	displayDebugLog("Message: ${descMap}")
+
+	eventMap = handleMessage(descMap)
+    }
+
+    
+    // lastCheckinEpoch is for apps that can use Epoch time/date and lastCheckinTime can be used with Hubitat Dashboard
+    sendEvent(name: "lastCheckinEpoch", value: now())
+    sendEvent(name: "lastCheckinTime", value: new Date().toLocaleString())
+    
+
     if (eventMap != [:]) {
         displayDebugLog("Creating event ${eventMap}")
         return createEvent(eventMap)
@@ -131,21 +227,21 @@ private def displayInfoLog(message) {
 
 // Switch relay off
 def off(paired) {
-    def newlyPaired = paired ? " for newly paired sensor" : ""
+    newlyPaired = paired ? " for newly paired sensor" : ""
     displayInfoLog("Set actuator off${newlyPaired}")
     zigbee.command(0x0006, 0x00) // 0x0006 OnOff cluster, 0x00 off
 }
 
 // Switch relay on
 def on(paired) {
-    def newlyPaired = paired ? " for newly paired sensor" : ""
+    newlyPaired = paired ? " for newly paired sensor" : ""
     displayInfoLog("Set actuator on${newlyPaired}")
     zigbee.command(0x0006, 0x01) // 0x0006 OnOff cluster, 0x01 on
 }
 
 // Toggle relay
 def toggle(paired) {
-    def newlyPaired = paired ? " for newly paired sensor" : ""
+    newlyPaired = paired ? " for newly paired sensor" : ""
     displayInfoLog("Toggle actuator${newlyPaired}")
     zigbee.command(0x0006, 0x02) // 0x0006 OnOff cluster, 0x02 toggle
 }
